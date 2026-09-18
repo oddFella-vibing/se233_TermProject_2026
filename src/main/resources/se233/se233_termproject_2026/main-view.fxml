@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.CheckBox?>
+<?import javafx.scene.control.ChoiceBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.control.Slider?>
+<?import javafx.scene.control.SplitPane?>
+<?import javafx.scene.control.ToolBar?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.control.ToggleButton?>
+<?import javafx.scene.control.ToggleGroup?>
+<?import javafx.scene.control.Spinner?>
+<?import javafx.scene.control.ProgressBar?>
+<?import javafx.scene.control.ScrollPane?>
+<BorderPane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity"
+            prefHeight="720.0" prefWidth="1100.0"
+            xmlns="http://javafx.com/javafx/21"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="se233.se233_termproject_2026.controller.MainController">
+
+    <!-- Top Panel: Zoom Controls Only -->
+    <top>
+        <ToolBar BorderPane.alignment="CENTER">
+            <items>
+                <!-- Zoom In Button with Image -->
+                <Button fx:id="zoomInButton" mnemonicParsing="false" onAction="#handleZoomIn">
+                    <graphic>
+                        <ImageView fitWidth="16" fitHeight="16" preserveRatio="true">
+                            <image>
+                                <Image url="@images/zoom-in.png" />
+                            </image>
+                        </ImageView>
+                    </graphic>
+                </Button>
+
+                <!-- Zoom Out Button with Image -->
+                <Button fx:id="zoomOutButton" mnemonicParsing="false" onAction="#handleZoomOut">
+                    <graphic>
+                        <ImageView fitWidth="16" fitHeight="16" preserveRatio="true">
+                            <image>
+                                <Image url="@images/zoom-out.png" />
+                            </image>
+                        </ImageView>
+                    </graphic>
+                </Button>
+
+                <!-- Zoom Fit Button -->
+
+                <Button fx:id="zoomFitButton" mnemonicParsing="false" onAction="#handleZoomToFit"  >
+                    <graphic>
+                        <ImageView fitWidth="16" fitHeight="16" preserveRatio="true">
+                            <image>
+                                <Image url="@images/fit-image.png"/>
+                            </image>
+                        </ImageView>
+                    </graphic>
+                </Button>
+            </items>
+        </ToolBar>
+    </top>
+
+    <!-- Center: Side-by-Side Image Comparison Workspace -->
+    <center>
+        <SplitPane dividerPositions="0.5" prefHeight="200.0" prefWidth="200.0" BorderPane.alignment="CENTER">
+            <items>
+                <!-- Left: Original Raster Image Preview -->
+                <VBox alignment="CENTER" spacing="10.0" style="-fx-background-color: #e8e8e8;">
+                    <padding>
+                        <Insets bottom="10.0" left="10.0" right="10.0" top="10.0" />
+                    </padding>
+                    <children>
+                        <Label style="-fx-font-weight: bold; -fx-text-fill: #555555;" text="Original Image" />
+                        <StackPane fx:id="originalImagePane" VBox.vgrow="ALWAYS" style="-fx-background-color: #ffffff; -fx-border-color: #dddddd;">
+                            <children>
+                                <ScrollPane fitToHeight="true" fitToWidth="true" style="-fx-background: #ffffff; -fx-background-color: transparent;">
+                                    <content>
+                                        <StackPane alignment="CENTER">
+                                            <ImageView fx:id="originalImageView" fitHeight="450.0" fitWidth="400.0" pickOnBounds="true" preserveRatio="true" />
+                                        </StackPane>
+                                    </content>
+                                </ScrollPane>
+                            </children>
+                        </StackPane>
+                    </children>
+                </VBox>
+
+                <!-- Right: Vectorized Result Preview (SVG) -->
+                <VBox alignment="CENTER" spacing="10.0" style="-fx-background-color: #e8e8e8;">
+                    <padding>
+                        <Insets bottom="10.0" left="10.0" right="10.0" top="10.0" />
+                    </padding>
+                    <children>
+                        <Label style="-fx-font-weight: bold; -fx-text-fill: #555555;" text="Vector Result (SVG)" />
+                        <StackPane fx:id="vectorImagePane" VBox.vgrow="ALWAYS" style="-fx-background-color: #ffffff; -fx-border-color: #dddddd;">
+                            <children>
+                                <ScrollPane fitToHeight="true" fitToWidth="true" style="-fx-background: #ffffff; -fx-background-color: transparent;">
+                                    <content>
+                                        <StackPane alignment="CENTER">
+                                            <ImageView fx:id="vectorImageView" fitHeight="450.0" fitWidth="400.0" pickOnBounds="true" preserveRatio="true" />
+                                        </StackPane>
+                                    </content>
+                                </ScrollPane>
+                            </children>
+                        </StackPane>
+                    </children>
+                </VBox>
+            </items>
+        </SplitPane>
+    </center>
+
+    <!-- Right-Handed Panel: Settings & Batch Export -->
+    <right>
+        <VBox prefWidth="280.0" spacing="15.0" style="-fx-background-color: #f9f9f9; -fx-border-color: #dddddd; -fx-border-width: 0 0 0 1px;" BorderPane.alignment="CENTER">
+            <padding>
+                <Insets bottom="15.0" left="15.0" right="15.0" top="15.0" />
+            </padding>
+            <children>
+                <Label style="-fx-font-size: 16px; -fx-font-weight: bold;" text="Vectorization Settings" />
+                <Separator />
+
+                <!-- Navigation Controls for Multiple Images -->
+                <VBox spacing="5.0">
+                    <children>
+                        <Label text="Image Navigation" style="-fx-font-weight: bold;" />
+                        <HBox spacing="10.0">
+                            <children>
+                                <Button fx:id="prevButton" maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#handlePrevImage" text="&lt; Back" HBox.hgrow="ALWAYS" />
+                                <Button fx:id="nextButton" maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#handleNextImage" text="Next &gt;" HBox.hgrow="ALWAYS" />
+                            </children>
+                        </HBox>
+                        <Label fx:id="imageCounterLabel" alignment="CENTER" maxWidth="1.7976931348623157E308" text="Image 1 of 1" style="-fx-text-fill: #777777; -fx-font-size: 11px;" />
+                    </children>
+                </VBox>
+
+                <Separator />
+
+                <!-- Detail Level Selector -->
+                <VBox spacing="5.0">
+                    <children>
+                        <Label text="Detail Level" style="-fx-font-weight: bold;" />
+                    <HBox styleClass="segmented-button-bar" >
+                    <children>
+                        <!-- Low Button -->
+                        <ToggleButton fx:id="detailLowBtn" mnemonicParsing="false" text="Low" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                            <toggleGroup>
+                                <ToggleGroup fx:id="detailToggleGroup" />
+                            </toggleGroup>
+                        </ToggleButton>
+
+                        <!-- Medium Button (Default selected) -->
+                        <ToggleButton fx:id="detailMedBtn" mnemonicParsing="false" selected="true" text="Medium" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                            <toggleGroup>
+                                <fx:reference source="detailToggleGroup" />
+                            </toggleGroup>
+                        </ToggleButton>
+
+                        <!-- High Button -->
+                        <ToggleButton fx:id="detailHighBtn" mnemonicParsing="false" text="High" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                            <toggleGroup>
+                                <fx:reference source="detailToggleGroup" />
+                            </toggleGroup>
+                        </ToggleButton>
+                    </children>
+                    </HBox>
+                    </children>
+                </VBox>
+
+                <!-- Colors Selector -->
+                <VBox spacing="5.0">
+                    <children>
+                        <Label text="Colors" style="-fx-font-weight: bold;" />
+                        <HBox styleClass="segmented-button-bar">
+                            <children>
+                                <ToggleButton fx:id="unlimitedColorsBtn" mnemonicParsing="false" text="Unlimited" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                                    <toggleGroup>
+                                        <ToggleGroup fx:id="colorToggleGroup" />
+                                    </toggleGroup>
+                                </ToggleButton>
+
+                                <ToggleButton fx:id="customColorsBtn" mnemonicParsing="false" selected="true" text="Custom" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                                    <toggleGroup>
+                                        <fx:reference source="colorToggleGroup" />
+                                    </toggleGroup>
+                                </ToggleButton>
+                            </children>
+                        </HBox>
+
+                        <!-- Custom Color Count Spinner (Defaults to 2, max 5) -->
+                        <Spinner fx:id="customColorSpinner" editable="false" maxWidth="1.7976931348623157E308" />
+                    </children>
+                </VBox>
+
+                <!-- Remove Background Checkbox -->
+                <VBox spacing="5.0">
+                    <children>
+                        <CheckBox fx:id="removeBackgroundCheckBox" mnemonicParsing="false" text="Remove background (Transparent)" />
+                    </children>
+                </VBox>
+
+                <VBox VBox.vgrow="ALWAYS" />
+                <VBox spacing="3.0">
+                    <children>
+                        <ProgressBar fx:id="exportProgressBar" maxWidth="1.7976931348623157E308" progress="0.0" visible="false" />
+                    </children>
+                </VBox>
+                <Separator />
+
+                <!-- Batch Export Button -->
+                <Button fx:id="exportAllButton" maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#handleExportAll" style="-fx-base: #2e7d32; -fx-text-fill: white; -fx-font-weight: bold;" text="Export All..." />
+            </children>
+        </VBox>
+    </right>
+</BorderPane>
