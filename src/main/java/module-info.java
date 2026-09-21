@@ -4,7 +4,9 @@ module se.se233_termproject_ {
 
     requires org.apache.logging.log4j;
     requires org.apache.logging.log4j.core;
+    requires java.desktop;
 
     opens se233.se233_termproject_2026.controller to javafx.fxml;
     exports se233.se233_termproject_2026;
+    opens se233.se233_termproject_2026.controller.vectorizer to javafx.fxml;
 }

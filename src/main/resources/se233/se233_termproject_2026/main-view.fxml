@@ -81,10 +81,10 @@
                         <Label style="-fx-font-weight: bold; -fx-text-fill: #555555;" text="Original Image" />
                         <StackPane fx:id="originalImagePane" VBox.vgrow="ALWAYS" style="-fx-background-color: #ffffff; -fx-border-color: #dddddd;">
                             <children>
-                                <ScrollPane fitToHeight="true" fitToWidth="true" style="-fx-background: #ffffff; -fx-background-color: transparent;">
+                                <ScrollPane fx:id="originalImgContainer" fitToHeight="true" fitToWidth="true" style="-fx-background: #ffffff; -fx-background-color: transparent;">
                                     <content>
-                                        <StackPane alignment="CENTER">
-                                            <ImageView fx:id="originalImageView" fitHeight="450.0" fitWidth="400.0" pickOnBounds="true" preserveRatio="true" />
+                                        <StackPane fx:id="originalImgView" alignment="CENTER">
+                                            <ImageView fx:id="originalImage" fitHeight="450.0" fitWidth="400.0" pickOnBounds="true" preserveRatio="true" />
                                         </StackPane>
                                     </content>
                                 </ScrollPane>
@@ -102,10 +102,10 @@
                         <Label style="-fx-font-weight: bold; -fx-text-fill: #555555;" text="Vector Result (SVG)" />
                         <StackPane fx:id="vectorImagePane" VBox.vgrow="ALWAYS" style="-fx-background-color: #ffffff; -fx-border-color: #dddddd;">
                             <children>
-                                <ScrollPane fitToHeight="true" fitToWidth="true" style="-fx-background: #ffffff; -fx-background-color: transparent;">
+                                <ScrollPane fx:id="vectorizedImgContainer" fitToHeight="true" fitToWidth="true" style="-fx-background: #ffffff; -fx-background-color: transparent;">
                                     <content>
-                                        <StackPane alignment="CENTER">
-                                            <ImageView fx:id="vectorImageView" fitHeight="450.0" fitWidth="400.0" pickOnBounds="true" preserveRatio="true" />
+                                        <StackPane fx:id="vectorizedImgView" alignment="CENTER">
+                                            <ImageView fx:id="vectorImage" fitHeight="450.0" fitWidth="400.0" pickOnBounds="true" preserveRatio="true" />
                                         </StackPane>
                                     </content>
                                 </ScrollPane>

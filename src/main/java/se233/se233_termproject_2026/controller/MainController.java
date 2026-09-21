@@ -4,17 +4,36 @@ import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.layout.Pane;
+import javafx.scene.layout.StackPane;
+import javafx.scene.shape.Rectangle;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
-
-import java.io.File;
+import se233.se233_termproject_2026.controller.vectorizer.ColorLayer;
+import se233.se233_termproject_2026.controller.vectorizer.ColorSegmenter;
+import se233.se233_termproject_2026.controller.vectorizer.PotraceCLIEngine;
+import se233.se233_termproject_2026.view_misc.PanZoomCanvas;
+import javafx.concurrent.Task;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.SVGPath;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
+import java.io.File;
 
 public class MainController {
 
-    @FXML private ImageView originalImageView;
-    @FXML private ImageView vectorImageView;
+    @FXML private ImageView originalImage;
+    @FXML private ImageView vectorImage;
+
+    @FXML private Pane originalImagePane;
+    @FXML private Pane vectorImagePane;
+
+    @FXML private StackPane originalImgView;
+    @FXML private StackPane vectorizedImgView;
+
+    @FXML private ScrollPane originalImgContainer;
+    @FXML private ScrollPane vectorizedImgContainer;
 
     @FXML private ToggleGroup detailToggleGroup;
     @FXML private ToggleGroup colorToggleGroup;
@@ -38,6 +57,22 @@ public class MainController {
                 new SpinnerValueFactory.IntegerSpinnerValueFactory(2, 5, 2);
         customColorSpinner.setValueFactory(colorValueFactory);
 
+        Rectangle clipO = new Rectangle();
+        clipO.widthProperty().bind(originalImgView.widthProperty());
+        clipO.heightProperty().bind(originalImgView.heightProperty());
+        originalImgView.setClip(clipO);
+
+        Rectangle clipV = new Rectangle();
+        clipV.widthProperty().bind(vectorizedImgView.widthProperty());
+        clipV.heightProperty().bind(vectorizedImgView.heightProperty());
+        vectorizedImgView.setClip(clipV);
+
+        PanZoomCanvas Ocontroller = new PanZoomCanvas();
+        Ocontroller.enablePanAndZoom(originalImgView, originalImage);
+
+        PanZoomCanvas Vcontroller = new PanZoomCanvas();
+        Vcontroller.enablePanAndZoom(vectorizedImgView, vectorImage);
+
         // 2. Hide/Show spinner dynamically based on whether "Custom" is active
         colorToggleGroup.selectedToggleProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
@@ -47,6 +82,70 @@ public class MainController {
                 customColorSpinner.setManaged(isCustom);
             }
         });
+    }
+
+    public void processImageInFX(BufferedImage inputImage, Pane canvas, int targetColorCount) {
+        Task<List<ColorLayer>> vectorTask = new Task<>() {
+            @Override
+            protected List<ColorLayer> call() throws Exception {
+                // 1. Extract color palette
+                List<java.awt.Color> colors = ColorSegmenter.extractPalette(inputImage, targetColorCount);
+                List<ColorLayer> layers = new ArrayList<>();
+
+                // 2. Trace each layer via Potrace ProcessBuilder
+                for (java.awt.Color c : colors) {
+                    boolean[][] mask = ColorSegmenter.createBinaryMask(inputImage, c, 10);
+
+                    // Returns raw string from Potrace (ProcessBuilder)
+                    String rawPotraceOutput = PotraceCLIEngine.traceMaskToSvgPath(mask);
+
+                    // Extract clean 'd' attribute string
+                    String cleanPathData = PotraceCLIEngine.extractPathDataFromPotraceSvg(rawPotraceOutput);
+
+                    layers.add(new ColorLayer(c, cleanPathData));
+                }
+                return layers;
+            }
+        };
+
+        // 3. Render results back on UI Thread
+        vectorTask.setOnSucceeded(event -> {
+            List<ColorLayer> layers = vectorTask.getValue();
+            canvas.getChildren().clear();
+
+            for (ColorLayer layer : layers) {
+                if (layer.getSvgPathData() == null || layer.getSvgPathData().isEmpty()) {
+                    continue;
+                }
+
+                SVGPath fxPath = new SVGPath();
+                // JavaFX accepts raw "M... C... Z" path strings directly
+                fxPath.setContent(layer.getSvgPathData());
+
+                // Convert AWT Color to JavaFX Color
+                Color fxColor = Color.rgb(
+                        layer.getColor().getRed(),
+                        layer.getColor().getGreen(),
+                        layer.getColor().getBlue()
+                );
+
+                fxPath.setFill(fxColor);
+                fxPath.setStroke(null); // Remove default black outline border
+
+                canvas.getChildren().add(fxPath);
+            }
+        });
+
+        vectorTask.setOnFailed(event -> {
+            Throwable exception = vectorTask.getException();
+            System.err.println("Vectorization error: " + exception.getMessage());
+            exception.printStackTrace();
+        });
+
+        // Run task on background thread to keep UI smooth and responsive
+        Thread backgroundThread = new Thread(vectorTask);
+        backgroundThread.setDaemon(true); // Ensures thread closes if application quits
+        backgroundThread.start();
     }
 
     public void initFiles(List<File> files) {
@@ -62,7 +161,7 @@ public class MainController {
 
         File currentFile = loadedFiles.get(currentIndex);
         Image image = new Image(currentFile.toURI().toString());
-        originalImageView.setImage(image);
+        originalImage.setImage(image);
 
         imageCounterLabel.setText("Image " + (currentIndex + 1) + " of " + loadedFiles.size());
         prevButton.setDisable(currentIndex == 0);
@@ -81,26 +180,26 @@ public class MainController {
 
     @FXML
     private void handleZoomIn() {
-        originalImageView.setScaleX(originalImageView.getScaleX() * 1.15);
-        originalImageView.setScaleY(originalImageView.getScaleY() * 1.15);
-        vectorImageView.setScaleX(vectorImageView.getScaleX() * 1.15);
-        vectorImageView.setScaleY(vectorImageView.getScaleY() * 1.15);
+        originalImage.setScaleX(originalImage.getScaleX() * 1.15);
+        originalImage.setScaleY(originalImage.getScaleY() * 1.15);
+        vectorImage.setScaleX(vectorImage.getScaleX() * 1.15);
+        vectorImage.setScaleY(vectorImage.getScaleY() * 1.15);
     }
 
     @FXML
     private void handleZoomOut() {
-        originalImageView.setScaleX(Math.max(0.5, originalImageView.getScaleX() / 1.15));
-        originalImageView.setScaleY(Math.max(0.5, originalImageView.getScaleY() / 1.15));
-        vectorImageView.setScaleX(Math.max(0.5, vectorImageView.getScaleX() / 1.15));
-        vectorImageView.setScaleY(Math.max(0.5, vectorImageView.getScaleY() / 1.15));
+        originalImage.setScaleX(Math.max(0.5, originalImage.getScaleX() / 1.15));
+        originalImage.setScaleY(Math.max(0.5, originalImage.getScaleY() / 1.15));
+        vectorImage.setScaleX(Math.max(0.5, vectorImage.getScaleX() / 1.15));
+        vectorImage.setScaleY(Math.max(0.5, vectorImage.getScaleY() / 1.15));
     }
 
     @FXML
     private void handleZoomToFit() {
-        originalImageView.setScaleX(1.0);
-        originalImageView.setScaleY(1.0);
-        vectorImageView.setScaleX(1.0);
-        vectorImageView.setScaleY(1.0);
+        originalImage.setScaleX(1.0);
+        originalImage.setScaleY(1.0);
+        vectorImage.setScaleX(1.0);
+        vectorImage.setScaleY(1.0);
     }
 
     @FXML
