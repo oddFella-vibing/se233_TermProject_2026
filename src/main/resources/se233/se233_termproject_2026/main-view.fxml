@@ -21,6 +21,7 @@
 <?import javafx.scene.control.Spinner?>
 <?import javafx.scene.control.ProgressBar?>
 <?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.layout.Pane?>
 <BorderPane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity"
             prefHeight="720.0" prefWidth="1100.0"
             xmlns="http://javafx.com/javafx/21"
@@ -105,7 +106,7 @@
                                 <ScrollPane fx:id="vectorizedImgContainer" fitToHeight="true" fitToWidth="true" style="-fx-background: #ffffff; -fx-background-color: transparent;">
                                     <content>
                                         <StackPane fx:id="vectorizedImgView" alignment="CENTER">
-                                            <ImageView fx:id="vectorImage" fitHeight="450.0" fitWidth="400.0" pickOnBounds="true" preserveRatio="true" />
+                                            <Pane fx:id="vectorImage" maxHeight="450.0" maxWidth="400.0" pickOnBounds="true" />
                                         </StackPane>
                                     </content>
                                 </ScrollPane>

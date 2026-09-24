@@ -1,14 +1,18 @@
 package se233.se233_termproject_2026.controller;
 
 import javafx.fxml.FXML;
+import javafx.scene.Group;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.StackPane;
 import javafx.scene.shape.Rectangle;
+import javafx.scene.transform.Scale;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import se233.se233_termproject_2026.controller.vectorizer.ColorLayer;
 import se233.se233_termproject_2026.controller.vectorizer.ColorSegmenter;
 import se233.se233_termproject_2026.controller.vectorizer.PotraceCLIEngine;
@@ -16,15 +20,20 @@ import se233.se233_termproject_2026.view_misc.PanZoomCanvas;
 import javafx.concurrent.Task;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.SVGPath;
+import se233.se233_termproject_2026.view_misc.VectorizedImageView;
+
+import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.io.File;
 
 public class MainController {
+    private static final Logger logger = LogManager.getLogger();
 
     @FXML private ImageView originalImage;
-    @FXML private ImageView vectorImage;
+    @FXML private Pane vectorImage;
 
     @FXML private Pane originalImagePane;
     @FXML private Pane vectorImagePane;
@@ -48,6 +57,7 @@ public class MainController {
     @FXML private Button nextButton;
 
     private List<File> loadedFiles = new ArrayList<>();
+    private VectorizedImageView VView;
     private int currentIndex = 0;
 
     @FXML
@@ -67,11 +77,13 @@ public class MainController {
         clipV.heightProperty().bind(vectorizedImgView.heightProperty());
         vectorizedImgView.setClip(clipV);
 
-        PanZoomCanvas Ocontroller = new PanZoomCanvas();
-        Ocontroller.enablePanAndZoom(originalImgView, originalImage);
+        PanZoomCanvas Ocontroller = new PanZoomCanvas(originalImgView, originalImage);
+        Ocontroller.enablePanAndZoom();
 
-        PanZoomCanvas Vcontroller = new PanZoomCanvas();
-        Vcontroller.enablePanAndZoom(vectorizedImgView, vectorImage);
+        PanZoomCanvas Vcontroller = new PanZoomCanvas(vectorizedImgView, vectorImage);
+        Vcontroller.enablePanAndZoom();
+
+        VView = new VectorizedImageView(vectorImage);
 
         // 2. Hide/Show spinner dynamically based on whether "Custom" is active
         colorToggleGroup.selectedToggleProperty().addListener((obs, oldVal, newVal) -> {
@@ -91,19 +103,22 @@ public class MainController {
                 // 1. Extract color palette
                 List<java.awt.Color> colors = ColorSegmenter.extractPalette(inputImage, targetColorCount);
                 List<ColorLayer> layers = new ArrayList<>();
+                logger.debug("Extract color successful");
 
                 // 2. Trace each layer via Potrace ProcessBuilder
                 for (java.awt.Color c : colors) {
-                    boolean[][] mask = ColorSegmenter.createBinaryMask(inputImage, c, 10);
+                    boolean[][] mask = ColorSegmenter.createBinaryMask(inputImage, c, colors);
 
                     // Returns raw string from Potrace (ProcessBuilder)
                     String rawPotraceOutput = PotraceCLIEngine.traceMaskToSvgPath(mask);
+//                    logger.debug(rawPotraceOutput);
 
                     // Extract clean 'd' attribute string
-                    String cleanPathData = PotraceCLIEngine.extractPathDataFromPotraceSvg(rawPotraceOutput);
+//                    String cleanPathData = PotraceCLIEngine.extractPathDataFromPotraceSvg(rawPotraceOutput);
 
-                    layers.add(new ColorLayer(c, cleanPathData));
+                    layers.add(new ColorLayer(c, rawPotraceOutput));
                 }
+                logger.debug("Mask layer extraction successful");
                 return layers;
             }
         };
@@ -111,33 +126,20 @@ public class MainController {
         // 3. Render results back on UI Thread
         vectorTask.setOnSucceeded(event -> {
             List<ColorLayer> layers = vectorTask.getValue();
-            canvas.getChildren().clear();
 
-            for (ColorLayer layer : layers) {
-                if (layer.getSvgPathData() == null || layer.getSvgPathData().isEmpty()) {
-                    continue;
-                }
+//            for(ColorLayer cl: layers) {
+//                logger.debug(cl.getSvgPathData());
+//                logger.debug(cl.getHexColor());
+//            }
 
-                SVGPath fxPath = new SVGPath();
-                // JavaFX accepts raw "M... C... Z" path strings directly
-                fxPath.setContent(layer.getSvgPathData());
+            VView.loadVectorLayers(layers, inputImage.getWidth(), inputImage.getHeight());
 
-                // Convert AWT Color to JavaFX Color
-                Color fxColor = Color.rgb(
-                        layer.getColor().getRed(),
-                        layer.getColor().getGreen(),
-                        layer.getColor().getBlue()
-                );
-
-                fxPath.setFill(fxColor);
-                fxPath.setStroke(null); // Remove default black outline border
-
-                canvas.getChildren().add(fxPath);
-            }
+            logger.debug("Task ended successfully");
         });
 
         vectorTask.setOnFailed(event -> {
             Throwable exception = vectorTask.getException();
+            logger.error("Vectorization error: " + exception.getMessage());
             System.err.println("Vectorization error: " + exception.getMessage());
             exception.printStackTrace();
         });
@@ -148,10 +150,14 @@ public class MainController {
         backgroundThread.start();
     }
 
-    public void initFiles(List<File> files) {
+    public void initFiles(List<File> files) throws IOException {
         if (files != null && !files.isEmpty()) {
             this.loadedFiles = files;
             this.currentIndex = 0;
+            for(File imgFile: files) {
+                BufferedImage img = ImageIO.read(imgFile);
+                processImageInFX(img, vectorImage, 255);
+            }
             displayCurrentImage();
         }
     }
