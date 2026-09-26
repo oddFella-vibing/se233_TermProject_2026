@@ -7,6 +7,7 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.transform.Scale;
 import javafx.stage.DirectoryChooser;
@@ -16,6 +17,7 @@ import org.apache.logging.log4j.Logger;
 import se233.se233_termproject_2026.controller.vectorizer.ColorLayer;
 import se233.se233_termproject_2026.controller.vectorizer.ColorSegmenter;
 import se233.se233_termproject_2026.controller.vectorizer.PotraceCLIEngine;
+import se233.se233_termproject_2026.services.ProgressTaskService;
 import se233.se233_termproject_2026.view_misc.PanZoomCanvas;
 import javafx.concurrent.Task;
 import javafx.scene.paint.Color;
@@ -56,17 +58,33 @@ public class MainController {
     @FXML private Button prevButton;
     @FXML private Button nextButton;
 
+    @FXML private VBox extractProgressBox ;
+    @FXML private ProgressBar extractProgressBar;
+    @FXML private VBox analyzeProgressBox;
+    @FXML private ProgressBar analyzeProgressBar;
+    @FXML private VBox vectorizeProgressBox;
+    @FXML private ProgressBar vectorizeProgressBar;
+
+    private ProgressTaskService progressTaskService;
+
     private List<File> loadedFiles = new ArrayList<>();
     private VectorizedImageView VView;
     private int currentIndex = 0;
 
     @FXML
     public void initialize() {
+        progressTaskService = new ProgressTaskService(
+                extractProgressBox, extractProgressBar,
+                analyzeProgressBox, analyzeProgressBar,
+                vectorizeProgressBox, vectorizeProgressBar
+        );
         // 1. Initialize Custom Color Spinner (Range: 2 to 5, Default: 2)
         SpinnerValueFactory<Integer> colorValueFactory =
                 new SpinnerValueFactory.IntegerSpinnerValueFactory(2, 5, 2);
         customColorSpinner.setValueFactory(colorValueFactory);
-
+        customColorSpinner.valueProperty().addListener((obs, oldVal, newVal) -> {
+            triggerReprocessing();
+        });
         Rectangle clipO = new Rectangle();
         clipO.widthProperty().bind(originalImgView.widthProperty());
         clipO.heightProperty().bind(originalImgView.heightProperty());
@@ -85,23 +103,65 @@ public class MainController {
 
         VView = new VectorizedImageView(vectorImage);
 
-        // 2. Hide/Show spinner dynamically based on whether "Custom" is active
+
+        //  Color Toggle Group (Handles spinner visibility AND re-processing)
         colorToggleGroup.selectedToggleProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
                 ToggleButton selected = (ToggleButton) newVal;
                 boolean isCustom = "Custom".equals(selected.getText());
                 customColorSpinner.setVisible(isCustom);
                 customColorSpinner.setManaged(isCustom);
+                triggerReprocessing();
             }
         });
+
+        //  Detail Toggle Group (Re-runs pipeline when detail level changes)
+        detailToggleGroup.selectedToggleProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null) {
+                triggerReprocessing();
+            }
+        });
+
+        //  Remove Background CheckBox (Re-runs pipeline when background option changes)
+        removeBackgroundCheckBox.selectedProperty().addListener((obs, oldVal, newVal) -> {
+            triggerReprocessing();
+        });
+    }
+    public void processImageInFX(BufferedImage inputImage, Pane canvas, int targetColorCount) {
+        // 1. ANALYZE TASK (Drives the analyze progress bar)
+        Task<List<java.awt.Color>> analyzeTask = new Task<>() {
+            @Override
+            protected List<java.awt.Color> call() throws Exception {
+                List<java.awt.Color> colors = ColorSegmenter.extractPalette(inputImage, targetColorCount);
+                logger.debug("Extract color successful");
+                return colors;
+            }
+        };
+        analyzeTask.setOnSucceeded(event -> {
+            List<java.awt.Color> colors = analyzeTask.getValue();
+            startVectorizeTask(inputImage, canvas, colors);
+            logger.debug("Analyzation task ended successfully");
+        });
+
+        analyzeTask.setOnFailed(event -> {
+            Throwable exception = analyzeTask.getException();
+            logger.error("Color analyzation error: " + exception.getMessage());
+            exception.printStackTrace();
+        });
+        // Bind analyze task; when it succeeds, it triggers the vector task with the colors
+        progressTaskService.bindTask(analyzeTask, analyzeProgressBox, analyzeProgressBar);
+
+        Thread analyzeThread = new Thread(analyzeTask);
+        analyzeThread.setDaemon(true);
+        analyzeThread.start();
     }
 
-    public void processImageInFX(BufferedImage inputImage, Pane canvas, int targetColorCount) {
+    public void startVectorizeTask(BufferedImage inputImage, Pane canvas, List<java.awt.Color> colors) {
         Task<List<ColorLayer>> vectorTask = new Task<>() {
             @Override
             protected List<ColorLayer> call() throws Exception {
                 // 1. Extract color palette
-                List<java.awt.Color> colors = ColorSegmenter.extractPalette(inputImage, targetColorCount);
+
                 List<ColorLayer> layers = new ArrayList<>();
                 logger.debug("Extract color successful");
 
@@ -137,12 +197,14 @@ public class MainController {
             logger.debug("Task ended successfully");
         });
 
+
         vectorTask.setOnFailed(event -> {
             Throwable exception = vectorTask.getException();
             logger.error("Vectorization error: " + exception.getMessage());
             System.err.println("Vectorization error: " + exception.getMessage());
             exception.printStackTrace();
         });
+        progressTaskService.bindTask(vectorTask, vectorizeProgressBox, vectorizeProgressBar);
 
         // Run task on background thread to keep UI smooth and responsive
         Thread backgroundThread = new Thread(vectorTask);
@@ -154,11 +216,42 @@ public class MainController {
         if (files != null && !files.isEmpty()) {
             this.loadedFiles = files;
             this.currentIndex = 0;
-            for(File imgFile: files) {
-                BufferedImage img = ImageIO.read(imgFile);
-                processImageInFX(img, vectorImage, 255);
-            }
-            displayCurrentImage();
+
+            Task<Void> extractTask = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    int total = files.size();
+                    for (int i = 0; i < total; i++) {
+                        BufferedImage img = ImageIO.read(files.get(i));
+                        // Optional: store or pre-load if needed
+                        updateProgress(i + 1, total); // Drives extractProgressBar!
+                    }
+                    updateProgress(total, total);
+                    return null;
+                }
+            };
+            extractTask.setOnSucceeded(e -> {
+                displayCurrentImage();
+                try {
+                    BufferedImage initialImg = ImageIO.read(files.get(currentIndex));
+                    processImageInFX(initialImg, vectorImage, getCustomColorCount());
+                } catch (IOException ex) {
+                    logger.error("Failed to load initial image: " + ex.getMessage());
+                }
+                logger.debug("Extraction task ended successfully");
+            });
+
+            extractTask.setOnFailed(e -> {
+                Throwable exception = extractTask.getException();
+                logger.error("File extraction error: " + exception.getMessage());
+                exception.printStackTrace();
+            });
+
+            progressTaskService.bindTask(extractTask, extractProgressBox, extractProgressBar);
+
+            Thread backgroundThread = new Thread(extractTask);
+            backgroundThread.setDaemon(true);
+            backgroundThread.start();
         }
     }
 
@@ -265,5 +358,16 @@ public class MainController {
 
     public ProgressBar getExportProgressBar() {
         return exportProgressBar;
+    }
+    private void triggerReprocessing() {
+        if (loadedFiles.isEmpty()) return;
+        try {
+            BufferedImage currentImg = ImageIO.read(loadedFiles.get(currentIndex));
+            processImageInFX(currentImg, vectorImage, getCustomColorCount());
+            logger.debug("Settings changed: Re-triggering image processing pipeline.");
+        } catch (IOException e) {
+            logger.error("Failed to re-process image on setting change: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 }

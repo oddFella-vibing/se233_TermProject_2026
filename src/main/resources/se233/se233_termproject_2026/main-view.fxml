@@ -206,11 +206,40 @@
                         <CheckBox fx:id="removeBackgroundCheckBox" mnemonicParsing="false" text="Remove background (Transparent)" />
                     </children>
                 </VBox>
+                <!-- progress bars -->
+                <VBox spacing="8.0" style="-fx-padding: 0 0 10px 0;">
+                    <children>
+                        <Separator />
 
+                        <!-- 1. Extracting/Loading Progress -->
+                        <VBox fx:id="extractProgressBox" spacing="2.0" visible="false" managed="false">
+                            <children>
+                                <Label fx:id="extractLabel" style="-fx-font-size: 10px;" text="Extracting &amp; Loading files..." />
+                                <ProgressBar fx:id="extractProgressBar" maxWidth="1.7976931348623157E308" progress="0.0" />
+                            </children>
+                        </VBox>
+
+                        <!-- 2. Analyzing Progress -->
+                        <VBox fx:id="analyzeProgressBox" spacing="2.0" visible="false" managed="false">
+                            <children>
+                                <Label fx:id="analyzeLabel" style="-fx-font-size: 10px;" text="Analyzing image colors..." />
+                                <ProgressBar fx:id="analyzeProgressBar" maxWidth="1.7976931348623157E308" progress="0.0" />
+                            </children>
+                        </VBox>
+
+                        <!-- 3. Vectorizing Progress -->
+                        <VBox fx:id="vectorizeProgressBox" spacing="2.0" visible="false" managed="false">
+                            <children>
+                                <Label fx:id="vectorizeLabel" style="-fx-font-size: 10px;" text="Vectorizing preview..." />
+                                <ProgressBar fx:id="vectorizeProgressBar" maxWidth="1.7976931348623157E308" progress="0.0" />
+                            </children>
+                        </VBox>
+                    </children>
+                </VBox>
                 <VBox VBox.vgrow="ALWAYS" />
                 <VBox spacing="3.0">
                     <children>
-                        <ProgressBar fx:id="exportProgressBar" maxWidth="1.7976931348623157E308" progress="0.0" visible="false" />
+                        <ProgressBar fx:id="exportProgressBar" maxWidth="1.7976931348623157E308" progress="0.0" visible="false" managed="false"/>
                     </children>
                 </VBox>
                 <Separator />
