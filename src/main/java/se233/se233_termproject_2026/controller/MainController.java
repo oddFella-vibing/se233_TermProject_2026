@@ -129,10 +129,17 @@ public class MainController {
     }
     public void processImageInFX(BufferedImage inputImage, Pane canvas, int targetColorCount) {
         // 1. ANALYZE TASK (Drives the analyze progress bar)
+        String colorMode = getSelectedColorMode();
         Task<List<java.awt.Color>> analyzeTask = new Task<>() {
             @Override
             protected List<java.awt.Color> call() throws Exception {
-                List<java.awt.Color> colors = ColorSegmenter.extractPalette(inputImage, targetColorCount);
+                List<java.awt.Color> colors ;
+                if ("Unlimited".equals(colorMode)) {
+                    // Use original/unlimited palette extraction method . 255 currently
+                    colors = ColorSegmenter.extractPalette(inputImage,255);
+                } else {
+                    colors = ColorSegmenter.extractPalette(inputImage, targetColorCount);
+                }
                 logger.debug("Extract color successful");
                 return colors;
             }
@@ -269,12 +276,14 @@ public class MainController {
 
     @FXML
     private void handlePrevImage() {
-        if (currentIndex > 0) { currentIndex--; displayCurrentImage(); }
+        if (currentIndex > 0) { currentIndex--; displayCurrentImage(); triggerReprocessing();}
     }
 
     @FXML
     private void handleNextImage() {
-        if (currentIndex < loadedFiles.size() - 1) { currentIndex++; displayCurrentImage(); }
+        if (currentIndex < loadedFiles.size() - 1) { currentIndex++; displayCurrentImage();
+            triggerReprocessing();
+        }
     }
 
     @FXML
@@ -301,16 +310,51 @@ public class MainController {
         vectorImage.setScaleY(1.0);
     }
 
+    private void processAndSaveFile(File file, String outputPath, int colorCount) throws IOException, InterruptedException {
+        BufferedImage img = ImageIO.read(file);
+
+        // 1. Extract palette and trace layers
+        String colorMode = getSelectedColorMode();
+        List<java.awt.Color> colors;
+        if ("Unlimited".equals(colorMode)) {
+            colors = ColorSegmenter.extractPalette(img, 255); // Use full/unlimited palette
+        } else {
+            colors = ColorSegmenter.extractPalette(img, colorCount);
+        }
+        List<ColorLayer> layers = new ArrayList<>();
+
+        for (java.awt.Color c : colors) {
+            boolean[][] mask = ColorSegmenter.createBinaryMask(img, c, colors);
+            String rawSvgPath = PotraceCLIEngine.traceMaskToSvgPath(mask);
+            layers.add(new ColorLayer(c, rawSvgPath));
+        }
+
+        // 2. Construct the SVG string content
+        StringBuilder svgContent = new StringBuilder();
+        svgContent.append(String.format("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%d\" height=\"%d\">\n", img.getWidth(), img.getHeight()));
+        for (ColorLayer layer : layers) {
+            String hexColor = String.format("#%02x%02x%02x", layer.getColor().getRed(), layer.getColor().getGreen(), layer.getColor().getBlue());
+            svgContent.append(String.format("  <path fill=\"%s\" d=\"%s\"/>\n", hexColor, layer.getSvgPathData()));
+        }
+        svgContent.append("</svg>");
+
+        // 3. Write out the final .svg file into the target directory
+        String fileName = file.getName();
+        String baseName = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+        File outputFile = new File(outputPath, baseName + "_vectorized.svg");
+        java.nio.file.Files.writeString(outputFile.toPath(), svgContent.toString());
+    }
     @FXML
     private void handleExportAll() {
         DirectoryChooser directoryChooser = new DirectoryChooser();
         directoryChooser.setTitle("Select Output Folder for Batch Export");
         File selectedDirectory = directoryChooser.showDialog(new Stage());
 
-        if (selectedDirectory != null) {
+        if (selectedDirectory != null && !loadedFiles.isEmpty()) {
             String outputPath = selectedDirectory.getAbsolutePath();
+            int colorCount = getCustomColorCount();
 
-            // Constraint check for parallel processing execution
+            // Constraint check for parallel processing execution (as defined in your stub)
             boolean isMediumDetail = "Medium".equals(getSelectedDetailLevel());
             boolean isCustomColors = "Custom".equals(getSelectedColorMode());
             boolean useParallel = (loadedFiles.size() > 1) && isMediumDetail && isCustomColors;
@@ -318,14 +362,62 @@ public class MainController {
             // Make progress bar visible during processing
             exportProgressBar.setVisible(true);
 
-            if (useParallel) {
-                System.out.println("Executing PARALLEL export to: " + outputPath);
-                System.out.println("Parameters -> Colors: " + getCustomColorCount() + ", Transparent BG: " + isRemoveBackgroundEnabled());
-                // TODO : Hand off loadedFiles, outputPath, and settings to your background task here.
-            } else {
-                System.out.println("Executing SEQUENTIALLY to: " + outputPath);
-                // TODO : Hand off to sequential runner.
-            }
+            Task<Void> exportTask = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    int total = loadedFiles.size();
+
+                    if (useParallel) {
+                        logger.debug("Executing PARALLEL export to: " + outputPath);
+                        java.util.concurrent.atomic.AtomicInteger completedCount = new java.util.concurrent.atomic.AtomicInteger(0);
+
+                        // Use parallel stream for multi-image batch processing
+                        loadedFiles.parallelStream().forEach(file -> {
+                            try {
+                                processAndSaveFile(file, outputPath, colorCount);
+                                int current = completedCount.incrementAndGet();
+                                updateProgress(current, total);
+                            } catch (Exception e) {
+                                logger.error("Failed to export file in parallel: " + file.getName(), e);
+                            }
+                        });
+                    } else {
+                        logger.debug("Executing SEQUENTIALLY to: " + outputPath);
+                        for (int i = 0; i < total; i++) {
+                            processAndSaveFile(loadedFiles.get(i), outputPath, colorCount);
+                            updateProgress(i + 1, total);
+                        }
+                    }
+
+                    updateProgress(total, total);
+                    return null;
+                }
+            };
+
+            // Bind progress bar and handle completion/failure UI cleanup
+            exportProgressBar.progressProperty().bind(exportTask.progressProperty());
+
+            exportTask.setOnSucceeded(e -> {
+                exportProgressBar.progressProperty().unbind();
+                exportProgressBar.setVisible(false);
+                logger.debug("Batch export completed successfully!");
+                Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                alert.setTitle("Export Successful");
+                alert.setHeaderText(null);
+                alert.setContentText("All images have been successfully vectorized and exported to the selected folder!");
+                alert.showAndWait();
+            });
+
+            exportTask.setOnFailed(e -> {
+                exportProgressBar.progressProperty().unbind();
+                exportProgressBar.setVisible(false);
+                logger.error("Batch export failed: " + exportTask.getException().getMessage());
+                exportTask.getException().printStackTrace();
+            });
+
+            Thread exportThread = new Thread(exportTask);
+            exportThread.setDaemon(true);
+            exportThread.start();
         }
     }
 
