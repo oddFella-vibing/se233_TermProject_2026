@@ -1,38 +1,38 @@
 package se233.se233_termproject_2026.controller;
 
 import javafx.fxml.FXML;
-import javafx.scene.Group;
 import javafx.scene.control.*;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.Rectangle;
-import javafx.scene.transform.Scale;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import se233.se233_termproject_2026.controller.vectorizer.ColorLayer;
-import se233.se233_termproject_2026.controller.vectorizer.ColorSegmenter;
-import se233.se233_termproject_2026.controller.vectorizer.PotraceCLIEngine;
+import se233.se233_termproject_2026.controller.vectorizer.*;
 import se233.se233_termproject_2026.services.ProgressTaskService;
 import se233.se233_termproject_2026.view_misc.PanZoomCanvas;
 import javafx.concurrent.Task;
-import javafx.scene.paint.Color;
-import javafx.scene.shape.SVGPath;
 import se233.se233_termproject_2026.view_misc.VectorizedImageView;
 
 import javax.imageio.ImageIO;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.io.File;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class MainController {
     private static final Logger logger = LogManager.getLogger();
+    private static final int MAX_COLOR_COUNT = 256;
 
     @FXML private ImageView originalImage;
     @FXML private Pane vectorImage;
@@ -68,6 +68,7 @@ public class MainController {
     private ProgressTaskService progressTaskService;
 
     private List<File> loadedFiles = new ArrayList<>();
+    private List<Color> _5ColorPalette;
     private VectorizedImageView VView;
     private int currentIndex = 0;
 
@@ -85,6 +86,7 @@ public class MainController {
         customColorSpinner.valueProperty().addListener((obs, oldVal, newVal) -> {
             triggerReprocessing();
         });
+
         Rectangle clipO = new Rectangle();
         clipO.widthProperty().bind(originalImgView.widthProperty());
         clipO.heightProperty().bind(originalImgView.heightProperty());
@@ -103,12 +105,16 @@ public class MainController {
 
         VView = new VectorizedImageView(vectorImage);
 
-
         //  Color Toggle Group (Handles spinner visibility AND re-processing)
         colorToggleGroup.selectedToggleProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
                 ToggleButton selected = (ToggleButton) newVal;
                 boolean isCustom = "Custom".equals(selected.getText());
+                try {
+                    _5ColorPalette = ColorSegmenter.extractPalette(ImageIO.read(loadedFiles.get(currentIndex)), 5);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
                 customColorSpinner.setVisible(isCustom);
                 customColorSpinner.setManaged(isCustom);
                 triggerReprocessing();
@@ -128,15 +134,16 @@ public class MainController {
         });
     }
     public void processImageInFX(BufferedImage inputImage, Pane canvas, int targetColorCount) {
-        // 1. ANALYZE TASK (Drives the analyze progress bar)
+        // 1. ANALYZE TASK (Drives the analysis progress bar)
         String colorMode = getSelectedColorMode();
         Task<List<java.awt.Color>> analyzeTask = new Task<>() {
             @Override
             protected List<java.awt.Color> call() throws Exception {
                 List<java.awt.Color> colors ;
                 if ("Unlimited".equals(colorMode)) {
-                    // Use original/unlimited palette extraction method . 255 currently
-                    colors = ColorSegmenter.extractPalette(inputImage,255);
+                    // Use original/unlimited palette extraction method . 32 currently
+                    colors = ColorSegmenter.extractPalette(inputImage,MAX_COLOR_COUNT);
+//                    colors.stream().forEach(c -> logger.debug("r: {}, g: {}, b: {}", c.getRed(), c.getGreen(), c.getBlue()));
                 } else {
                     colors = ColorSegmenter.extractPalette(inputImage, targetColorCount);
                 }
@@ -164,31 +171,8 @@ public class MainController {
     }
 
     public void startVectorizeTask(BufferedImage inputImage, Pane canvas, List<java.awt.Color> colors) {
-        Task<List<ColorLayer>> vectorTask = new Task<>() {
-            @Override
-            protected List<ColorLayer> call() throws Exception {
-                // 1. Extract color palette
 
-                List<ColorLayer> layers = new ArrayList<>();
-                logger.debug("Extract color successful");
-
-                // 2. Trace each layer via Potrace ProcessBuilder
-                for (java.awt.Color c : colors) {
-                    boolean[][] mask = ColorSegmenter.createBinaryMask(inputImage, c, colors);
-
-                    // Returns raw string from Potrace (ProcessBuilder)
-                    String rawPotraceOutput = PotraceCLIEngine.traceMaskToSvgPath(mask);
-//                    logger.debug(rawPotraceOutput);
-
-                    // Extract clean 'd' attribute string
-//                    String cleanPathData = PotraceCLIEngine.extractPathDataFromPotraceSvg(rawPotraceOutput);
-
-                    layers.add(new ColorLayer(c, rawPotraceOutput));
-                }
-                logger.debug("Mask layer extraction successful");
-                return layers;
-            }
-        };
+        VectorTask vectorTask = new VectorTask(inputImage, colors, isRemoveBackgroundEnabled());
 
         // 3. Render results back on UI Thread
         vectorTask.setOnSucceeded(event -> {
@@ -230,7 +214,7 @@ public class MainController {
                     int total = files.size();
                     for (int i = 0; i < total; i++) {
                         BufferedImage img = ImageIO.read(files.get(i));
-                        // Optional: store or pre-load if needed
+                        // Optional: store or preload if needed
                         updateProgress(i + 1, total); // Drives extractProgressBar!
                     }
                     updateProgress(total, total);
@@ -241,7 +225,7 @@ public class MainController {
                 displayCurrentImage();
                 try {
                     BufferedImage initialImg = ImageIO.read(files.get(currentIndex));
-                    processImageInFX(initialImg, vectorImage, getCustomColorCount());
+                    processImageInFX(initialImg, vectorImage, MAX_COLOR_COUNT);
                 } catch (IOException ex) {
                     logger.error("Failed to load initial image: " + ex.getMessage());
                 }
@@ -275,13 +259,27 @@ public class MainController {
     }
 
     @FXML
-    private void handlePrevImage() {
-        if (currentIndex > 0) { currentIndex--; displayCurrentImage(); triggerReprocessing();}
+    private void handlePrevImage() throws IOException {
+        if (currentIndex > 0) {
+            currentIndex--;
+            _5ColorPalette = ColorSegmenter.extractPalette(ImageIO.read(loadedFiles.get(currentIndex)), 5);
+            for(Color cp: _5ColorPalette) {
+                System.out.println(cp.toString());
+            }
+            displayCurrentImage();
+            triggerReprocessing();
+        }
     }
 
     @FXML
-    private void handleNextImage() {
-        if (currentIndex < loadedFiles.size() - 1) { currentIndex++; displayCurrentImage();
+    private void handleNextImage() throws IOException {
+        if (currentIndex < loadedFiles.size() - 1) {
+            currentIndex++;
+            _5ColorPalette = ColorSegmenter.extractPalette(ImageIO.read(loadedFiles.get(currentIndex)), 5);
+            for(Color cp: _5ColorPalette) {
+                System.out.println(cp.toString());
+            }
+            displayCurrentImage();
             triggerReprocessing();
         }
     }
@@ -317,32 +315,44 @@ public class MainController {
         String colorMode = getSelectedColorMode();
         List<java.awt.Color> colors;
         if ("Unlimited".equals(colorMode)) {
-            colors = ColorSegmenter.extractPalette(img, 255); // Use full/unlimited palette
+            colors = ColorSegmenter.extractPalette(img, MAX_COLOR_COUNT); // Useful/unlimited palette
         } else {
             colors = ColorSegmenter.extractPalette(img, colorCount);
         }
-        List<ColorLayer> layers = new ArrayList<>();
 
-        for (java.awt.Color c : colors) {
-            boolean[][] mask = ColorSegmenter.createBinaryMask(img, c, colors);
-            String rawSvgPath = PotraceCLIEngine.traceMaskToSvgPath(mask);
-            layers.add(new ColorLayer(c, rawSvgPath));
-        }
+        VectorTask vectorTask = new VectorTask(img, colors, isRemoveBackgroundEnabled());
+        AtomicReference<String> svgContent = new AtomicReference<>();
 
-        // 2. Construct the SVG string content
-        StringBuilder svgContent = new StringBuilder();
-        svgContent.append(String.format("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%d\" height=\"%d\">\n", img.getWidth(), img.getHeight()));
-        for (ColorLayer layer : layers) {
-            String hexColor = String.format("#%02x%02x%02x", layer.getColor().getRed(), layer.getColor().getGreen(), layer.getColor().getBlue());
-            svgContent.append(String.format("  <path fill=\"%s\" d=\"%s\"/>\n", hexColor, layer.getSvgPathData()));
-        }
-        svgContent.append("</svg>");
+        // 3. Render results back on UI Thread
+        vectorTask.setOnSucceeded(event -> {
+            List<ColorLayer> layers = vectorTask.getValue();
+            svgContent.set(SVGWriter.generateFullSVG(layers, img.getWidth(), img.getHeight(), isRemoveBackgroundEnabled(), new Color(255, 255, 255)));
+            logger.debug("Task ended successfully");
+        });
+
+        vectorTask.setOnFailed(event -> {
+            Throwable exception = vectorTask.getException();
+            logger.error("Vectorization error: " + exception.getMessage());
+            System.err.println("Vectorization error: " + exception.getMessage());
+            exception.printStackTrace();
+        });
+
+        progressTaskService.bindTask(vectorTask, vectorizeProgressBox, vectorizeProgressBar);
+
+        // Run task on background thread to keep UI smooth and responsive
+        Thread backgroundThread = new Thread(vectorTask);
+        backgroundThread.setDaemon(true); // Ensures thread closes if application quits
+        backgroundThread.start();
+
+        while(svgContent.get() == null){} // this solution is not so good...
+
+        logger.debug(svgContent.get());
 
         // 3. Write out the final .svg file into the target directory
         String fileName = file.getName();
         String baseName = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
         File outputFile = new File(outputPath, baseName + "_vectorized.svg");
-        java.nio.file.Files.writeString(outputFile.toPath(), svgContent.toString());
+        java.nio.file.Files.writeString(outputFile.toPath(), svgContent.get());
     }
     @FXML
     private void handleExportAll() {
@@ -378,11 +388,11 @@ public class MainController {
                                 int current = completedCount.incrementAndGet();
                                 updateProgress(current, total);
                             } catch (Exception e) {
-                                logger.error("Failed to export file in parallel: " + file.getName(), e);
+                                logger.error("Failed to export file in parallel: {}", file.getName(), e);
                             }
                         });
                     } else {
-                        logger.debug("Executing SEQUENTIALLY to: " + outputPath);
+                        logger.debug("Executing SEQUENTIALLY to: {}", outputPath);
                         for (int i = 0; i < total; i++) {
                             processAndSaveFile(loadedFiles.get(i), outputPath, colorCount);
                             updateProgress(i + 1, total);
@@ -458,7 +468,7 @@ public class MainController {
             processImageInFX(currentImg, vectorImage, getCustomColorCount());
             logger.debug("Settings changed: Re-triggering image processing pipeline.");
         } catch (IOException e) {
-            logger.error("Failed to re-process image on setting change: " + e.getMessage());
+            logger.error("Failed to re-process image on setting change: {}", e.getMessage());
             e.printStackTrace();
         }
     }

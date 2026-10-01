@@ -181,13 +181,13 @@
                         <Label text="Colors" style="-fx-font-weight: bold;" />
                         <HBox styleClass="segmented-button-bar">
                             <children>
-                                <ToggleButton fx:id="unlimitedColorsBtn" mnemonicParsing="false" text="Unlimited" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                                <ToggleButton fx:id="unlimitedColorsBtn" mnemonicParsing="false" selected="true" text="Unlimited" HBox.hgrow="ALWAYS" maxWidth="Infinity">
                                     <toggleGroup>
                                         <ToggleGroup fx:id="colorToggleGroup" />
                                     </toggleGroup>
                                 </ToggleButton>
 
-                                <ToggleButton fx:id="customColorsBtn" mnemonicParsing="false" selected="true" text="Custom" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                                <ToggleButton fx:id="customColorsBtn" mnemonicParsing="false" text="Custom" HBox.hgrow="ALWAYS" maxWidth="Infinity">
                                     <toggleGroup>
                                         <fx:reference source="colorToggleGroup" />
                                     </toggleGroup>
@@ -196,7 +196,7 @@
                         </HBox>
 
                         <!-- Custom Color Count Spinner (Defaults to 2, max 5) -->
-                        <Spinner fx:id="customColorSpinner" editable="false" maxWidth="1.7976931348623157E308" />
+                        <Spinner visible="false" fx:id="customColorSpinner" editable="false" maxWidth="1.7976931348623157E308" />
                     </children>
                 </VBox>
 

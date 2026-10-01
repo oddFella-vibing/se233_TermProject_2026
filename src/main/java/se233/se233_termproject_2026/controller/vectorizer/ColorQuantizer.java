@@ -4,9 +4,7 @@ import java.awt.Graphics2D;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.awt.image.IndexColorModel;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 
 public class ColorQuantizer {
 
@@ -22,26 +20,35 @@ public class ColorQuantizer {
         g.drawImage(original, 0, 0, null);
         g.dispose();
 
-        // 2. Extract the generated color palette directly from the ColorModel
         IndexColorModel colorModel = (IndexColorModel) indexedImage.getColorModel();
-        int mapSize = colorModel.getMapSize();
 
-        // Cap palette size at requested max
-        int actualCount = Math.min(mapSize, maxColors);
+        // 1. Count pixel frequency for each palette index present in the image
+        Map<Integer, Integer> colorCounts = new HashMap<>();
+        int width = indexedImage.getWidth();
+        int height = indexedImage.getHeight();
 
+        // Raster sample
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int pixelIndex = indexedImage.getRaster().getSample(x, y, 0);
+                colorCounts.put(pixelIndex, colorCounts.getOrDefault(pixelIndex, 0) + 1);
+            }
+        }
+
+        // 2. Sort color indices by most frequent pixels
+        List<Map.Entry<Integer, Integer>> sortedIndices = new ArrayList<>(colorCounts.entrySet());
+        sortedIndices.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
+
+        // 3. Take top 'maxColors' palette entries that actually make up the image
         List<Color> palette = new ArrayList<>();
-        byte[] reds = new byte[mapSize];
-        byte[] greens = new byte[mapSize];
-        byte[] blues = new byte[mapSize];
-
-        colorModel.getReds(reds);
-        colorModel.getGreens(greens);
-        colorModel.getBlues(blues);
+        int actualCount = Math.min(sortedIndices.size(), maxColors);
 
         for (int i = 0; i < actualCount; i++) {
-            int r = reds[i] & 0xFF;
-            int gr = greens[i] & 0xFF;
-            int b = blues[i] & 0xFF;
+            int colorIdx = sortedIndices.get(i).getKey();
+            int r = colorModel.getRed(colorIdx);
+            int gr = colorModel.getGreen(colorIdx);
+            int b = colorModel.getBlue(colorIdx);
+
             palette.add(new Color(r, gr, b));
         }
 

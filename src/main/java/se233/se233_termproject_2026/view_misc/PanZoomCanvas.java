@@ -1,5 +1,6 @@
 package se233.se233_termproject_2026.view_misc;
 
+import javafx.scene.CacheHint;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.input.MouseButton;
@@ -22,6 +23,8 @@ public class PanZoomCanvas {
     public PanZoomCanvas(Node viewport, Node target) {
         this.thisViewport = viewport;
         this.thisTarget = target;
+        this.thisTarget.setCache(true);
+        this.thisTarget.setCacheHint(CacheHint.SPEED);
         gviewports.add(viewport);
         gtargets.add(target);
     }
