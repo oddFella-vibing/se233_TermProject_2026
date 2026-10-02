@@ -1,12 +1,14 @@
 package se233.se233_termproject_2026.controller;
 
 import javafx.fxml.FXML;
+import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
@@ -50,7 +52,8 @@ public class MainController {
     @FXML private ToggleGroup colorToggleGroup;
 
     // New UI elements
-    @FXML private Spinner<Integer> customColorSpinner;
+    @FXML private VBox colorSwatchBox;
+
     @FXML private ProgressBar exportProgressBar;
     @FXML private CheckBox removeBackgroundCheckBox;
 
@@ -69,6 +72,7 @@ public class MainController {
 
     private List<File> loadedFiles = new ArrayList<>();
     private List<Color> _5ColorPalette;
+    private int selectedCustomColorCount = 2;
     private VectorizedImageView VView;
     private int currentIndex = 0;
 
@@ -79,13 +83,7 @@ public class MainController {
                 analyzeProgressBox, analyzeProgressBar,
                 vectorizeProgressBox, vectorizeProgressBar
         );
-        // 1. Initialize Custom Color Spinner (Range: 2 to 5, Default: 2)
-        SpinnerValueFactory<Integer> colorValueFactory =
-                new SpinnerValueFactory.IntegerSpinnerValueFactory(2, 5, 2);
-        customColorSpinner.setValueFactory(colorValueFactory);
-        customColorSpinner.valueProperty().addListener((obs, oldVal, newVal) -> {
-            triggerReprocessing();
-        });
+
 
         Rectangle clipO = new Rectangle();
         clipO.widthProperty().bind(originalImgView.widthProperty());
@@ -112,11 +110,12 @@ public class MainController {
                 boolean isCustom = "Custom".equals(selected.getText());
                 try {
                     _5ColorPalette = ColorSegmenter.extractPalette(ImageIO.read(loadedFiles.get(currentIndex)), 5);
+                    updateColorSwatches(_5ColorPalette);
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
-                customColorSpinner.setVisible(isCustom);
-                customColorSpinner.setManaged(isCustom);
+                colorSwatchBox.setVisible(isCustom);
+                colorSwatchBox.setManaged(isCustom);
                 triggerReprocessing();
             }
         });
@@ -263,6 +262,7 @@ public class MainController {
         if (currentIndex > 0) {
             currentIndex--;
             _5ColorPalette = ColorSegmenter.extractPalette(ImageIO.read(loadedFiles.get(currentIndex)), 5);
+            updateColorSwatches(_5ColorPalette);
             for(Color cp: _5ColorPalette) {
                 System.out.println(cp.toString());
             }
@@ -276,6 +276,7 @@ public class MainController {
         if (currentIndex < loadedFiles.size() - 1) {
             currentIndex++;
             _5ColorPalette = ColorSegmenter.extractPalette(ImageIO.read(loadedFiles.get(currentIndex)), 5);
+            updateColorSwatches(_5ColorPalette);
             for(Color cp: _5ColorPalette) {
                 System.out.println(cp.toString());
             }
@@ -451,7 +452,7 @@ public class MainController {
     }
 
     public int getCustomColorCount() {
-        return customColorSpinner.getValue();
+        return selectedCustomColorCount;
     }
 
     public boolean isRemoveBackgroundEnabled() {
@@ -472,4 +473,61 @@ public class MainController {
             e.printStackTrace();
         }
     }
+//    helper color pallette selector
+private void updateColorSwatches(List<java.awt.Color> detectedColors) {
+    colorSwatchBox.getChildren().clear();
+
+    // Ensure selectedCustomColorCount defaults safely within 2 to 5 bounds
+    if (selectedCustomColorCount < 2 || selectedCustomColorCount > 5) {
+        selectedCustomColorCount = 2;
+    }
+
+    // Loop to create 4 rows: 2 colors, 3 colors, 4 colors, and 5 colors
+    for (int k = 2; k <= 5; k++) {
+        final int rowColorCount = k;
+
+        // Create an HBox container for each row option
+        HBox rowBox = new HBox(6);
+        rowBox.setAlignment(Pos.CENTER_LEFT);
+
+        boolean isRowSelected = (selectedCustomColorCount == rowColorCount);
+
+        // Style the row to look like a selectable card (highlight active row with blue border)
+        String rowStyle = "-fx-padding: 4px 6px; -fx-background-radius: 4px; -fx-cursor: hand;";
+        if (isRowSelected) {
+            rowStyle += "-fx-background-color: #e3f2fd; -fx-border-color: #2196F3; -fx-border-width: 1.5px; -fx-border-radius: 4px;";
+        } else {
+            rowStyle += "-fx-background-color: #fafafa; -fx-border-color: #e0e0e0; -fx-border-width: 1px; -fx-border-radius: 4px;";
+        }
+        rowBox.setStyle(rowStyle);
+
+
+
+        // Populate the color blocks (swatches) for this specific row count
+        int availableColors = (detectedColors != null) ? detectedColors.size() : 0;
+        for (int i = 0; i < k; i++) {
+            Pane swatch = new Pane();
+            swatch.setPrefSize(20, 20); // Compact size to fit 4 rows neatly
+
+            if (detectedColors != null && i < availableColors) {
+                java.awt.Color awtColor = detectedColors.get(i);
+                String hex = String.format("#%02x%02x%02x", awtColor.getRed(), awtColor.getGreen(), awtColor.getBlue());
+                swatch.setStyle("-fx-background-color: " + hex + "; -fx-border-color: #cccccc; -fx-border-width: 1px; -fx-border-radius: 2px;");
+            } else {
+                // Fallback placeholder if extraction hasn't finished or lacks enough colors
+                swatch.setStyle("-fx-background-color: #e0e0e0; -fx-border-color: #cccccc; -fx-border-width: 1px; -fx-border-radius: 2px;");
+            }
+            rowBox.getChildren().add(swatch);
+        }
+
+        // Clicking a row selects that color configuration and reprocesses the view
+        rowBox.setOnMouseClicked(e -> {
+            selectedCustomColorCount = rowColorCount;
+            updateColorSwatches(detectedColors);
+            triggerReprocessing();
+        });
+
+        colorSwatchBox.getChildren().add(rowBox);
+    }
+}
 }

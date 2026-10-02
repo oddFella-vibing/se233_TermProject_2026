@@ -185,6 +185,14 @@
                                     <toggleGroup>
                                         <ToggleGroup fx:id="colorToggleGroup" />
                                     </toggleGroup>
+                                    <graphic>
+                                        <ImageView fitWidth="16" fitHeight="16" preserveRatio="true">
+                                            <image>
+                                                <!-- Update this path to point to your actual icon image -->
+                                                <Image url="@images/color-wheel.png" />
+                                            </image>
+                                        </ImageView>
+                                    </graphic>
                                 </ToggleButton>
 
                                 <ToggleButton fx:id="customColorsBtn" mnemonicParsing="false" text="Custom" HBox.hgrow="ALWAYS" maxWidth="Infinity">
@@ -195,8 +203,10 @@
                             </children>
                         </HBox>
 
-                        <!-- Custom Color Count Spinner (Defaults to 2, max 5) -->
-                        <Spinner visible="false" fx:id="customColorSpinner" editable="false" maxWidth="1.7976931348623157E308" />
+                        <!-- Custom Color Count Pallette selector (Defaults to 2, max 5) -->
+                        <!--HBox fx:id="colorSwatchBox" spacing="5" alignment="CENTER_LEFT" visible="false" managed="false"/-->
+                        <!-- Replace colorSwatchBox HBox with this VBox container: -->
+                        <VBox fx:id="colorSwatchBox" spacing="8" alignment="CENTER_LEFT" visible="false" managed="false"/>
                     </children>
                 </VBox>
 
