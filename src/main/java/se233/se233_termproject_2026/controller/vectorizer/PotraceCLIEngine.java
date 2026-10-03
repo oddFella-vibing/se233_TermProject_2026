@@ -1,10 +1,12 @@
 package se233.se233_termproject_2026.controller.vectorizer;
 
+import se233.se233_termproject_2026.model.QualitySetting;
+
 import java.io.*;
 
 public class PotraceCLIEngine {
 
-    public static String traceMaskToSvgPath(boolean[][] bitMatrix) throws IOException, InterruptedException {
+    public static String traceMaskToSvgPath(boolean[][] bitMatrix, QualitySetting qualitySetting) throws IOException, InterruptedException {
         // 1. Convert boolean matrix to a temporary PBM (1-bit binary image) file
         File tempPbm = File.createTempFile("potrace_mask_", ".pbm");
         tempPbm.deleteOnExit();
@@ -15,7 +17,10 @@ public class PotraceCLIEngine {
         ProcessBuilder pb = new ProcessBuilder(
                 "./potrace-1.16.win64/potrace.exe",               // Path to executable (or system PATH)
                 "-s",                    // Output format: SVG
-                "--turdsize", "2",       // Suppress noise specks
+                "-t", Integer.toString(qualitySetting.getTurdsize()),
+                "-a", Double.toString(qualitySetting.getAlphamax()),
+                "-O", Double.toString(qualitySetting.getOpttolerance()),
+                "-z", qualitySetting.getTurnpolicy(),
                 "-o", "-",               // Write output directly to STDOUT stream
                 tempPbm.getAbsolutePath()
         );

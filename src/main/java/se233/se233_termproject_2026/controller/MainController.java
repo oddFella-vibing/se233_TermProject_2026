@@ -18,6 +18,7 @@ import javafx.stage.Stage;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import se233.se233_termproject_2026.controller.vectorizer.*;
+import se233.se233_termproject_2026.model.QualitySetting;
 import se233.se233_termproject_2026.services.ProgressTaskService;
 import se233.se233_termproject_2026.view_misc.PanZoomCanvas;
 import javafx.concurrent.Task;
@@ -30,7 +31,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.io.File;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.IntStream;
 
 public class MainController {
     private static final Logger logger = LogManager.getLogger();
@@ -71,6 +74,7 @@ public class MainController {
     private ProgressTaskService progressTaskService;
 
     private List<File> loadedFiles = new ArrayList<>();
+    private List<QualitySetting> qualitySettings = new ArrayList<>();
     private List<Color> _5ColorPalette;
     private int selectedCustomColorCount = 2;
     private VectorizedImageView VView;
@@ -123,6 +127,8 @@ public class MainController {
         //  Detail Toggle Group (Re-runs pipeline when detail level changes)
         detailToggleGroup.selectedToggleProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
+                ToggleButton selected = (ToggleButton) newVal;
+                qualitySettings.get(currentIndex).changeMode(selected.getText());
                 triggerReprocessing();
             }
         });
@@ -171,7 +177,7 @@ public class MainController {
 
     public void startVectorizeTask(BufferedImage inputImage, Pane canvas, List<java.awt.Color> colors) {
 
-        VectorTask vectorTask = new VectorTask(inputImage, colors, isRemoveBackgroundEnabled());
+        VectorTask vectorTask = new VectorTask(inputImage, colors, isRemoveBackgroundEnabled(), qualitySettings.get(currentIndex));
 
         // 3. Render results back on UI Thread
         vectorTask.setOnSucceeded(event -> {
@@ -206,6 +212,9 @@ public class MainController {
         if (files != null && !files.isEmpty()) {
             this.loadedFiles = files;
             this.currentIndex = 0;
+            this.qualitySettings = IntStream.range(0, this.loadedFiles.size())
+                    .mapToObj(qi -> new QualitySetting())
+                    .toList();
 
             Task<Void> extractTask = new Task<>() {
                 @Override
@@ -309,7 +318,7 @@ public class MainController {
         vectorImage.setScaleY(1.0);
     }
 
-    private void processAndSaveFile(File file, String outputPath, int colorCount) throws IOException, InterruptedException {
+    private void processAndSaveFile(File file, String outputPath, int colorCount, QualitySetting qualitySetting) throws IOException, InterruptedException {
         BufferedImage img = ImageIO.read(file);
 
         // 1. Extract palette and trace layers
@@ -321,7 +330,7 @@ public class MainController {
             colors = ColorSegmenter.extractPalette(img, colorCount);
         }
 
-        VectorTask vectorTask = new VectorTask(img, colors, isRemoveBackgroundEnabled());
+        VectorTask vectorTask = new VectorTask(img, colors, isRemoveBackgroundEnabled(), qualitySetting);
         AtomicReference<String> svgContent = new AtomicReference<>();
 
         // 3. Render results back on UI Thread
@@ -380,12 +389,12 @@ public class MainController {
 
                     if (useParallel) {
                         logger.debug("Executing PARALLEL export to: " + outputPath);
-                        java.util.concurrent.atomic.AtomicInteger completedCount = new java.util.concurrent.atomic.AtomicInteger(0);
+                        AtomicInteger completedCount = new AtomicInteger(0);
 
                         // Use parallel stream for multi-image batch processing
                         loadedFiles.parallelStream().forEach(file -> {
                             try {
-                                processAndSaveFile(file, outputPath, colorCount);
+                                processAndSaveFile(file, outputPath, colorCount, qualitySettings.get(completedCount.get()));
                                 int current = completedCount.incrementAndGet();
                                 updateProgress(current, total);
                             } catch (Exception e) {
@@ -395,7 +404,7 @@ public class MainController {
                     } else {
                         logger.debug("Executing SEQUENTIALLY to: {}", outputPath);
                         for (int i = 0; i < total; i++) {
-                            processAndSaveFile(loadedFiles.get(i), outputPath, colorCount);
+                            processAndSaveFile(loadedFiles.get(i), outputPath, colorCount, qualitySettings.get(i));
                             updateProgress(i + 1, total);
                         }
                     }

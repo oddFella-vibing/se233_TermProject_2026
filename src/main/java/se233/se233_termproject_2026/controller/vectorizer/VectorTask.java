@@ -3,6 +3,7 @@ package se233.se233_termproject_2026.controller.vectorizer;
 import javafx.concurrent.Task;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import se233.se233_termproject_2026.model.QualitySetting;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -19,14 +20,16 @@ public class VectorTask extends Task<List<ColorLayer>> {
     private BufferedImage inputImage;
     private List<java.awt.Color> colors;
     private boolean removeBackground;
+    private QualitySetting qualitySetting;
 
-    public VectorTask(BufferedImage inputImage, List<java.awt.Color> colors, boolean removeBackground) {
+    public VectorTask(BufferedImage inputImage, List<java.awt.Color> colors, boolean removeBackground, QualitySetting qualitySetting) {
         this.inputImage = inputImage;
         this.colors = colors;
         this.removeBackground = removeBackground;
+        this.qualitySetting = qualitySetting;
     }
 
-    private boolean removeBackgroundByFloodFill(boolean[][] mask, int width, int height, double minCoverage) {
+    private boolean removeBackgroundByFloodFill(boolean[][] mask, int width, int height) {
         if (mask == null || width <= 0 || height <= 0) return false;
 
         boolean[][] visited = new boolean[height][width];
@@ -87,7 +90,7 @@ public class VectorTask extends Task<List<ColorLayer>> {
         double totalPixels = width * height;
         double coverageRatio = floodedPixelCount / totalPixels;
 
-        if (coverageRatio >= minCoverage) {
+        if (coverageRatio >= 0.15) {
             // Clear only the flooded background pixels from the mask
             for (Integer[] point : floodedPoints) {
                 mask[point[1]][point[0]] = false;
@@ -112,7 +115,7 @@ public class VectorTask extends Task<List<ColorLayer>> {
     protected List<ColorLayer> call() throws Exception {
         // 1. Trace each layer via Potrace ProcessBuilder
         int totalPixels = inputImage.getWidth() * inputImage.getHeight();
-        int minPixelThreshold = (int) (totalPixels * 0.0005); // 0.1% threshold -> 0.05% for 255 color
+//        int minPixelThreshold = (int) (totalPixels * 0.0005); // 0.1% threshold -> 0.05% for 255 color
         ExecutorService threadPool = Executors.newFixedThreadPool(
                 Runtime.getRuntime().availableProcessors()
         );
@@ -125,7 +128,7 @@ public class VectorTask extends Task<List<ColorLayer>> {
 
                 if(removeBackground) {
                     // Flood fills from corners; if it covers >= 15% of total canvas, it clears those background pixels
-                    boolean wasBgRemoved = removeBackgroundByFloodFill(mask, inputImage.getWidth(), inputImage.getHeight(), 0.15);
+                    boolean wasBgRemoved = removeBackgroundByFloodFill(mask, inputImage.getWidth(), inputImage.getHeight());
 
                     // If the entire mask was just the background, countMaskPixels will be 0
                     if (wasBgRemoved && countMaskPixels(mask) == 0) {
@@ -133,17 +136,17 @@ public class VectorTask extends Task<List<ColorLayer>> {
                     }
                 }
 
-                int pixelCount = countMaskPixels(mask);
+//                int pixelCount = countMaskPixels(mask);
 
                 // Skip layers that barely exist in the image
-                if (pixelCount < minPixelThreshold) {
+/*                if (pixelCount < minPixelThreshold) {
                     return null;
-                }
+                }*/
 
                 // Returns raw string from Potrace (ProcessBuilder)
                 String rawPotraceOutput = null;
                 try {
-                    rawPotraceOutput = PotraceCLIEngine.traceMaskToSvgPath(mask);
+                    rawPotraceOutput = PotraceCLIEngine.traceMaskToSvgPath(mask, qualitySetting);
                 } catch (IOException e) {
                     e.printStackTrace();
                     return null;
