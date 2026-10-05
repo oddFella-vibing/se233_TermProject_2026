@@ -18,6 +18,7 @@ import javafx.stage.Stage;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import se233.se233_termproject_2026.controller.vectorizer.*;
+import se233.se233_termproject_2026.model.ImageSettings;
 import se233.se233_termproject_2026.model.QualitySetting;
 import se233.se233_termproject_2026.services.ProgressTaskService;
 import se233.se233_termproject_2026.view_misc.PanZoomCanvas;
@@ -29,8 +30,10 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.io.File;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
@@ -75,11 +78,16 @@ public class MainController {
 
     private List<File> loadedFiles = new ArrayList<>();
     private List<QualitySetting> qualitySettings = new ArrayList<>();
+    private Map<File, ImageSettings> imageSettingsMap = new HashMap<>();
     private List<Color> _5ColorPalette;
     private int selectedCustomColorCount = 2;
     private VectorizedImageView VView;
     private int currentIndex = 0;
-
+    private ImageSettings getCurrentSettings() {
+        if (loadedFiles.isEmpty()) return new ImageSettings();
+        File currentFile = loadedFiles.get(currentIndex);
+        return imageSettingsMap.computeIfAbsent(currentFile, f -> new ImageSettings());
+    }
     @FXML
     public void initialize() {
         progressTaskService = new ProgressTaskService(
@@ -109,25 +117,32 @@ public class MainController {
 
         //  Color Toggle Group (Handles spinner visibility AND re-processing)
         colorToggleGroup.selectedToggleProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal != null) {
+            if (newVal != null && !loadedFiles.isEmpty()) {
                 ToggleButton selected = (ToggleButton) newVal;
-                boolean isCustom = "Custom".equals(selected.getText());
-                try {
-                    _5ColorPalette = ColorSegmenter.extractPalette(ImageIO.read(loadedFiles.get(currentIndex)), 5);
-                    updateColorSwatches(_5ColorPalette);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
+                String colorMode = selected.getText();
+                getCurrentSettings().setColorMode(colorMode);
+
+                boolean isCustom = "Custom".equals(colorMode);
                 colorSwatchBox.setVisible(isCustom);
                 colorSwatchBox.setManaged(isCustom);
+
+                try {
+                    BufferedImage img = ImageIO.read(loadedFiles.get(currentIndex));
+                    _5ColorPalette = ColorSegmenter.extractPalette(img, 5);
+                    getCurrentSettings().setCachedPalette(_5ColorPalette);
+                    updateColorSwatches(_5ColorPalette);
+                } catch (IOException e) {
+                    logger.error("Failed to extract palette on color mode change: {}", e.getMessage());
+                }
                 triggerReprocessing();
             }
         });
 
         //  Detail Toggle Group (Re-runs pipeline when detail level changes)
         detailToggleGroup.selectedToggleProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal != null) {
+            if (newVal != null && !loadedFiles.isEmpty()) {
                 ToggleButton selected = (ToggleButton) newVal;
+                getCurrentSettings().setDetailLevel(selected.getText());
                 qualitySettings.get(currentIndex).changeMode(selected.getText());
                 triggerReprocessing();
             }
@@ -135,7 +150,10 @@ public class MainController {
 
         //  Remove Background CheckBox (Re-runs pipeline when background option changes)
         removeBackgroundCheckBox.selectedProperty().addListener((obs, oldVal, newVal) -> {
-            triggerReprocessing();
+            if (!loadedFiles.isEmpty()) {
+                getCurrentSettings().setRemoveBackground(newVal);
+                triggerReprocessing();
+            }
         });
     }
     public void processImageInFX(BufferedImage inputImage, Pane canvas, int targetColorCount) {
@@ -144,14 +162,16 @@ public class MainController {
         Task<List<java.awt.Color>> analyzeTask = new Task<>() {
             @Override
             protected List<java.awt.Color> call() throws Exception {
-                List<java.awt.Color> colors ;
+                updateProgress(0, 2); // Step 1: Starting analysis
+
+                List<java.awt.Color> colors;
                 if ("Unlimited".equals(colorMode)) {
-                    // Use original/unlimited palette extraction method . 32 currently
-                    colors = ColorSegmenter.extractPalette(inputImage,MAX_COLOR_COUNT);
-//                    colors.stream().forEach(c -> logger.debug("r: {}, g: {}, b: {}", c.getRed(), c.getGreen(), c.getBlue()));
+                    colors = ColorSegmenter.extractPalette(inputImage, MAX_COLOR_COUNT);
                 } else {
                     colors = ColorSegmenter.extractPalette(inputImage, targetColorCount);
                 }
+
+                updateProgress(2, 2); // Step 2: Palette extracted successfully
                 logger.debug("Extract color successful");
                 return colors;
             }
@@ -215,17 +235,19 @@ public class MainController {
             this.qualitySettings = IntStream.range(0, this.loadedFiles.size())
                     .mapToObj(qi -> new QualitySetting())
                     .toList();
-
+            this.imageSettingsMap.clear();
             Task<Void> extractTask = new Task<>() {
                 @Override
                 protected Void call() throws Exception {
                     int total = files.size();
+                    updateProgress(0, total); // Initialize
+
                     for (int i = 0; i < total; i++) {
                         BufferedImage img = ImageIO.read(files.get(i));
-                        // Optional: store or preload if needed
-                        updateProgress(i + 1, total); // Drives extractProgressBar!
+                        // Optional storage if needed
+
+                        updateProgress(i + 1, total); // Track each file loaded!
                     }
-                    updateProgress(total, total);
                     return null;
                 }
             };
@@ -233,7 +255,11 @@ public class MainController {
                 displayCurrentImage();
                 try {
                     BufferedImage initialImg = ImageIO.read(files.get(currentIndex));
-                    processImageInFX(initialImg, vectorImage, MAX_COLOR_COUNT);
+                    _5ColorPalette = ColorSegmenter.extractPalette(initialImg, 5);
+                    getCurrentSettings().setCachedPalette(_5ColorPalette);
+                    updateColorSwatches(_5ColorPalette);
+                    syncUIWithCurrentSettings();
+                    processImageInFX(initialImg, vectorImage, getCustomColorCount());
                 } catch (IOException ex) {
                     logger.error("Failed to load initial image: " + ex.getMessage());
                 }
@@ -266,16 +292,59 @@ public class MainController {
         nextButton.setDisable(currentIndex == loadedFiles.size() - 1);
     }
 
+    private void syncUIWithCurrentSettings() {
+        if (loadedFiles.isEmpty()) return;
+        ImageSettings settings = getCurrentSettings();
+
+        // 1. Sync color mode toggle group
+        for (Toggle t : colorToggleGroup.getToggles()) {
+            if (t instanceof ToggleButton btn) {
+                if (btn.getText().equals(settings.getColorMode())) {
+                    colorToggleGroup.selectToggle(btn);
+                    break;
+                }
+            }
+        }
+
+        // 2. Sync detail level toggle group
+        for (Toggle t : detailToggleGroup.getToggles()) {
+            if (t instanceof ToggleButton btn) {
+                if (btn.getText().equals(settings.getDetailLevel())) {
+                    detailToggleGroup.selectToggle(btn);
+                    break;
+                }
+            }
+        }
+
+        // 3. Sync background removal checkbox
+        removeBackgroundCheckBox.setSelected(settings.isRemoveBackground());
+
+        // 4. Sync color swatches and visibility
+        boolean isCustom = "Custom".equals(settings.getColorMode());
+        colorSwatchBox.setVisible(isCustom);
+        colorSwatchBox.setManaged(isCustom);
+
+        if (settings.getCachedPalette() != null && !settings.getCachedPalette().isEmpty()) {
+            _5ColorPalette = settings.getCachedPalette();
+        } else {
+            try {
+                BufferedImage img = ImageIO.read(loadedFiles.get(currentIndex));
+                _5ColorPalette = ColorSegmenter.extractPalette(img, 5);
+                settings.setCachedPalette(_5ColorPalette);
+            } catch (IOException e) {
+                logger.error("Failed to extract palette during sync: {}", e.getMessage());
+            }
+        }
+        updateColorSwatches(_5ColorPalette);
+    }
+
     @FXML
     private void handlePrevImage() throws IOException {
         if (currentIndex > 0) {
             currentIndex--;
-            _5ColorPalette = ColorSegmenter.extractPalette(ImageIO.read(loadedFiles.get(currentIndex)), 5);
-            updateColorSwatches(_5ColorPalette);
-            for(Color cp: _5ColorPalette) {
-                System.out.println(cp.toString());
-            }
+
             displayCurrentImage();
+            syncUIWithCurrentSettings();
             triggerReprocessing();
         }
     }
@@ -284,11 +353,7 @@ public class MainController {
     private void handleNextImage() throws IOException {
         if (currentIndex < loadedFiles.size() - 1) {
             currentIndex++;
-            _5ColorPalette = ColorSegmenter.extractPalette(ImageIO.read(loadedFiles.get(currentIndex)), 5);
-            updateColorSwatches(_5ColorPalette);
-            for(Color cp: _5ColorPalette) {
-                System.out.println(cp.toString());
-            }
+            syncUIWithCurrentSettings();
             displayCurrentImage();
             triggerReprocessing();
         }
@@ -318,25 +383,23 @@ public class MainController {
         vectorImage.setScaleY(1.0);
     }
 
-    private void processAndSaveFile(File file, String outputPath, int colorCount, QualitySetting qualitySetting) throws IOException, InterruptedException {
+    private void processAndSaveFile(File file, String outputPath, int colorCount, QualitySetting qualitySetting, ImageSettings fileSettings) throws IOException, InterruptedException {
         BufferedImage img = ImageIO.read(file);
 
-        // 1. Extract palette and trace layers
-        String colorMode = getSelectedColorMode();
+        String colorMode = fileSettings.getColorMode();
         List<java.awt.Color> colors;
         if ("Unlimited".equals(colorMode)) {
-            colors = ColorSegmenter.extractPalette(img, MAX_COLOR_COUNT); // Useful/unlimited palette
+            colors = ColorSegmenter.extractPalette(img, MAX_COLOR_COUNT);
         } else {
-            colors = ColorSegmenter.extractPalette(img, colorCount);
+            colors = ColorSegmenter.extractPalette(img, fileSettings.getCustomColorCount());
         }
 
-        VectorTask vectorTask = new VectorTask(img, colors, isRemoveBackgroundEnabled(), qualitySetting);
+        VectorTask vectorTask = new VectorTask(img, colors, fileSettings.isRemoveBackground(), qualitySetting);
         AtomicReference<String> svgContent = new AtomicReference<>();
 
-        // 3. Render results back on UI Thread
         vectorTask.setOnSucceeded(event -> {
             List<ColorLayer> layers = vectorTask.getValue();
-            svgContent.set(SVGWriter.generateFullSVG(layers, img.getWidth(), img.getHeight(), isRemoveBackgroundEnabled(), new Color(255, 255, 255)));
+            svgContent.set(SVGWriter.generateFullSVG(layers, img.getWidth(), img.getHeight(), fileSettings.isRemoveBackground(), new Color(255, 255, 255)));
             logger.debug("Task ended successfully");
         });
 
@@ -349,21 +412,18 @@ public class MainController {
 
         progressTaskService.bindTask(vectorTask, vectorizeProgressBox, vectorizeProgressBar);
 
-        // Run task on background thread to keep UI smooth and responsive
         Thread backgroundThread = new Thread(vectorTask);
-        backgroundThread.setDaemon(true); // Ensures thread closes if application quits
+        backgroundThread.setDaemon(true);
         backgroundThread.start();
 
-        while(svgContent.get() == null){} // this solution is not so good...
+        while(svgContent.get() == null){}
 
-        logger.debug(svgContent.get());
-
-        // 3. Write out the final .svg file into the target directory
         String fileName = file.getName();
         String baseName = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
         File outputFile = new File(outputPath, baseName + "_vectorized.svg");
         java.nio.file.Files.writeString(outputFile.toPath(), svgContent.get());
     }
+
     @FXML
     private void handleExportAll() {
         DirectoryChooser directoryChooser = new DirectoryChooser();
@@ -372,9 +432,8 @@ public class MainController {
 
         if (selectedDirectory != null && !loadedFiles.isEmpty()) {
             String outputPath = selectedDirectory.getAbsolutePath();
-            int colorCount = getCustomColorCount();
 
-            // Constraint check for parallel processing execution (as defined in your stub)
+            // Constraint check for parallel processing execution
             boolean isMediumDetail = "Medium".equals(getSelectedDetailLevel());
             boolean isCustomColors = "Custom".equals(getSelectedColorMode());
             boolean useParallel = (loadedFiles.size() > 1) && isMediumDetail && isCustomColors;
@@ -386,15 +445,21 @@ public class MainController {
                 @Override
                 protected Void call() throws Exception {
                     int total = loadedFiles.size();
+                    updateProgress(0, total);
 
                     if (useParallel) {
-                        logger.debug("Executing PARALLEL export to: " + outputPath);
+                        logger.debug("Executing PARALLEL export to: {}", outputPath);
                         AtomicInteger completedCount = new AtomicInteger(0);
 
-                        // Use parallel stream for multi-image batch processing
                         loadedFiles.parallelStream().forEach(file -> {
                             try {
-                                processAndSaveFile(file, outputPath, colorCount, qualitySettings.get(completedCount.get()));
+                                int index = loadedFiles.indexOf(file);
+                                // Retrieve individual file's unique settings map entry safely
+                                ImageSettings fSettings = imageSettingsMap.getOrDefault(file, new ImageSettings());
+
+                                // Export the file using its specific configurations
+                                processAndSaveFile(file, outputPath, fSettings.getCustomColorCount(), qualitySettings.get(index), fSettings);
+
                                 int current = completedCount.incrementAndGet();
                                 updateProgress(current, total);
                             } catch (Exception e) {
@@ -404,7 +469,11 @@ public class MainController {
                     } else {
                         logger.debug("Executing SEQUENTIALLY to: {}", outputPath);
                         for (int i = 0; i < total; i++) {
-                            processAndSaveFile(loadedFiles.get(i), outputPath, colorCount, qualitySettings.get(i));
+                            File file = loadedFiles.get(i);
+                            // Retrieve individual file's unique settings map entry safely
+                            ImageSettings fSettings = imageSettingsMap.getOrDefault(file, new ImageSettings());
+
+                            processAndSaveFile(file, outputPath, fSettings.getCustomColorCount(), qualitySettings.get(i), fSettings);
                             updateProgress(i + 1, total);
                         }
                     }
@@ -431,7 +500,7 @@ public class MainController {
             exportTask.setOnFailed(e -> {
                 exportProgressBar.progressProperty().unbind();
                 exportProgressBar.setVisible(false);
-                logger.error("Batch export failed: " + exportTask.getException().getMessage());
+                logger.error("Batch export failed: {}", exportTask.getException().getMessage());
                 exportTask.getException().printStackTrace();
             });
 
@@ -451,26 +520,25 @@ public class MainController {
     }
 
     public String getSelectedDetailLevel() {
-        ToggleButton btn = (ToggleButton) detailToggleGroup.getSelectedToggle();
-        return (btn != null) ? btn.getText() : "Medium";
+        return getCurrentSettings().getDetailLevel();
     }
 
     public String getSelectedColorMode() {
-        ToggleButton btn = (ToggleButton) colorToggleGroup.getSelectedToggle();
-        return (btn != null) ? btn.getText() : "Custom";
+        return getCurrentSettings().getColorMode();
     }
 
     public int getCustomColorCount() {
-        return selectedCustomColorCount;
+        return getCurrentSettings().getCustomColorCount();
     }
 
     public boolean isRemoveBackgroundEnabled() {
-        return removeBackgroundCheckBox.isSelected();
+        return getCurrentSettings().isRemoveBackground();
     }
 
     public ProgressBar getExportProgressBar() {
         return exportProgressBar;
     }
+
     private void triggerReprocessing() {
         if (loadedFiles.isEmpty()) return;
         try {
@@ -486,22 +554,21 @@ public class MainController {
 private void updateColorSwatches(List<java.awt.Color> detectedColors) {
     colorSwatchBox.getChildren().clear();
 
-    // Ensure selectedCustomColorCount defaults safely within 2 to 5 bounds
-    if (selectedCustomColorCount < 2 || selectedCustomColorCount > 5) {
-        selectedCustomColorCount = 2;
+    ImageSettings settings = getCurrentSettings();
+    int currentCount = settings.getCustomColorCount();
+    if (currentCount < 2 || currentCount > 5) {
+        currentCount = 2;
+        settings.setCustomColorCount(currentCount);
     }
 
-    // Loop to create 4 rows: 2 colors, 3 colors, 4 colors, and 5 colors
     for (int k = 2; k <= 5; k++) {
         final int rowColorCount = k;
 
-        // Create an HBox container for each row option
         HBox rowBox = new HBox(6);
         rowBox.setAlignment(Pos.CENTER_LEFT);
 
-        boolean isRowSelected = (selectedCustomColorCount == rowColorCount);
+        boolean isRowSelected = (currentCount == rowColorCount);
 
-        // Style the row to look like a selectable card (highlight active row with blue border)
         String rowStyle = "-fx-padding: 4px 6px; -fx-background-radius: 4px; -fx-cursor: hand;";
         if (isRowSelected) {
             rowStyle += "-fx-background-color: #e3f2fd; -fx-border-color: #2196F3; -fx-border-width: 1.5px; -fx-border-radius: 4px;";
@@ -510,28 +577,23 @@ private void updateColorSwatches(List<java.awt.Color> detectedColors) {
         }
         rowBox.setStyle(rowStyle);
 
-
-
-        // Populate the color blocks (swatches) for this specific row count
         int availableColors = (detectedColors != null) ? detectedColors.size() : 0;
         for (int i = 0; i < k; i++) {
             Pane swatch = new Pane();
-            swatch.setPrefSize(20, 20); // Compact size to fit 4 rows neatly
+            swatch.setPrefSize(20, 20);
 
             if (detectedColors != null && i < availableColors) {
                 java.awt.Color awtColor = detectedColors.get(i);
                 String hex = String.format("#%02x%02x%02x", awtColor.getRed(), awtColor.getGreen(), awtColor.getBlue());
                 swatch.setStyle("-fx-background-color: " + hex + "; -fx-border-color: #cccccc; -fx-border-width: 1px; -fx-border-radius: 2px;");
             } else {
-                // Fallback placeholder if extraction hasn't finished or lacks enough colors
                 swatch.setStyle("-fx-background-color: #e0e0e0; -fx-border-color: #cccccc; -fx-border-width: 1px; -fx-border-radius: 2px;");
             }
             rowBox.getChildren().add(swatch);
         }
 
-        // Clicking a row selects that color configuration and reprocesses the view
         rowBox.setOnMouseClicked(e -> {
-            selectedCustomColorCount = rowColorCount;
+            getCurrentSettings().setCustomColorCount(rowColorCount);
             updateColorSwatches(detectedColors);
             triggerReprocessing();
         });

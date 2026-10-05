@@ -14,6 +14,7 @@ import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class VectorTask extends Task<List<ColorLayer>> {
     private static final Logger logger = LogManager.getLogger(VectorTask.class);
@@ -113,18 +114,21 @@ public class VectorTask extends Task<List<ColorLayer>> {
 
     @Override
     protected List<ColorLayer> call() throws Exception {
+        int totalColors = colors.size();
+        updateProgress(0, totalColors);
         // 1. Trace each layer via Potrace ProcessBuilder
         int totalPixels = inputImage.getWidth() * inputImage.getHeight();
 //        int minPixelThreshold = (int) (totalPixels * 0.0005); // 0.1% threshold -> 0.05% for 255 color
         ExecutorService threadPool = Executors.newFixedThreadPool(
                 Runtime.getRuntime().availableProcessors()
         );
+        AtomicInteger processedCount = new AtomicInteger(0);
         // 2. Dispatch each color layer as a parallel task
         List<CompletableFuture<ColorLayer>> futures = new ArrayList<>();
         for (java.awt.Color c : colors) {
 
             CompletableFuture<ColorLayer> task = CompletableFuture.supplyAsync(() -> {
-                boolean[][] mask = ColorSegmenter.createBinaryMask(inputImage, c, colors);
+              try{  boolean[][] mask = ColorSegmenter.createBinaryMask(inputImage, c, colors);
 
                 if(removeBackground) {
                     // Flood fills from corners; if it covers >= 15% of total canvas, it clears those background pixels
@@ -162,6 +166,10 @@ public class VectorTask extends Task<List<ColorLayer>> {
                 }
 
                 return new ColorLayer(c, rawPotraceOutput);
+              }
+              finally{ int current = processedCount.incrementAndGet();
+                  updateProgress(current, totalColors);
+              }
             }, threadPool);
             futures.add(task);
         }
@@ -171,6 +179,7 @@ public class VectorTask extends Task<List<ColorLayer>> {
                 .map(CompletableFuture::join)
                 .filter(colorLayer -> colorLayer != null)
                 .toList();
+        threadPool.shutdown();
         return layers;
     }
 }
