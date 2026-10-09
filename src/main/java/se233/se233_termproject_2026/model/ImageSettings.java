@@ -10,7 +10,7 @@ public class ImageSettings {
     private String detailLevel = "Medium";
     private boolean removeBackground = false;
     private List<Color> cachedPalette = new ArrayList<>();
-
+    private String preset = null;
     // Getters and Setters
     public String getColorMode() { return colorMode; }
     public void setColorMode(String colorMode) { this.colorMode = colorMode; }
@@ -26,4 +26,6 @@ public class ImageSettings {
 
     public List<Color> getCachedPalette() { return cachedPalette; }
     public void setCachedPalette(List<Color> cachedPalette) { this.cachedPalette = cachedPalette; }
+    public String getPreset() { return preset; }
+    public void setPreset(String preset) { this.preset = preset; }
 }

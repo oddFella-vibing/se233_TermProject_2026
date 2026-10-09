@@ -22,6 +22,7 @@
 <?import javafx.scene.control.ProgressBar?>
 <?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.layout.Pane?>
+<?import javafx.scene.control.ComboBox?>
 <BorderPane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity"
             prefHeight="720.0" prefWidth="1100.0"
             xmlns="http://javafx.com/javafx/21"
@@ -216,6 +217,8 @@
                         <CheckBox fx:id="removeBackgroundCheckBox" mnemonicParsing="false" text="Remove background (Transparent)" />
                     </children>
                 </VBox>
+                <!-- Add this inside your sidebar container in your FXML file -->
+                <ComboBox fx:id="presetComboBox" promptText="Select Preset Style..." prefWidth="200.0" />
                 <!-- progress bars -->
                 <VBox spacing="8.0" style="-fx-padding: 0 0 10px 0;">
                     <children>

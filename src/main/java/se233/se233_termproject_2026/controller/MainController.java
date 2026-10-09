@@ -59,7 +59,7 @@ public class MainController {
 
     // New UI elements
     @FXML private VBox colorSwatchBox;
-
+    @FXML private ComboBox<String> presetComboBox;
     @FXML private ProgressBar exportProgressBar;
     @FXML private CheckBox removeBackgroundCheckBox;
 
@@ -114,7 +114,21 @@ public class MainController {
         Vcontroller.enablePanAndZoom();
 
         VView = new VectorizedImageView(vectorImage);
+        if (presetComboBox != null) {
+            presetComboBox.getItems().addAll(
+                    "Stark Silhouette (2-Color, No BG)",
+                    "Detailed Woodcut (2-Color, High Detail)",
+                    "Retro 5-Color Poster",
+                    "Smooth Minimalist (4-Color)",
+                    "Full-Spectrum Digital Painting"
+            );
 
+            presetComboBox.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+                if (newVal != null && !loadedFiles.isEmpty()) {
+                    applyPreset(newVal);
+                }
+            });
+        }
         //  Color Toggle Group (Handles spinner visibility AND re-processing)
         colorToggleGroup.selectedToggleProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null && !loadedFiles.isEmpty()) {
@@ -155,6 +169,59 @@ public class MainController {
                 triggerReprocessing();
             }
         });
+    }
+    private void applyPreset(String presetName) {
+        if (loadedFiles.isEmpty()) return;
+
+        File currentFile = loadedFiles.get(currentIndex);
+        ImageSettings settings = imageSettingsMap.getOrDefault(currentFile, new ImageSettings());
+        settings.setPreset(presetName);
+
+        String detailLevel = "Medium";
+
+        switch (presetName) {
+            case "Stark Silhouette (2-Color, No BG)":
+                settings.setColorMode("Custom");
+                settings.setCustomColorCount(2);
+                detailLevel = "Low";
+                settings.setRemoveBackground(true);
+                break;
+            case "Detailed Woodcut (2-Color, High Detail)":
+                settings.setColorMode("Custom");
+                settings.setCustomColorCount(2);
+                detailLevel = "High";
+                settings.setRemoveBackground(false);
+                break;
+            case "Retro 5-Color Poster":
+                settings.setColorMode("Custom");
+                settings.setCustomColorCount(5);
+                detailLevel = "Medium";
+                settings.setRemoveBackground(true);
+                break;
+            case "Smooth Minimalist (4-Color)":
+                settings.setColorMode("Custom");
+                settings.setCustomColorCount(4);
+                detailLevel = "Low";
+                settings.setRemoveBackground(false);
+                break;
+            case "Full-Spectrum Digital Painting":
+                settings.setColorMode("Unlimited");
+                settings.setCustomColorCount(MAX_COLOR_COUNT);
+                detailLevel = "High";
+                settings.setRemoveBackground(false);
+                break;
+        }
+
+        settings.setDetailLevel(detailLevel);
+        imageSettingsMap.put(currentFile, settings);
+
+        if (currentIndex < qualitySettings.size()) {
+            qualitySettings.get(currentIndex).changeMode(detailLevel);
+        }
+
+        syncUIWithCurrentSettings();
+        triggerReprocessing();
+        logger.debug("Applied distinct preset: {}", presetName);
     }
     public void processImageInFX(BufferedImage inputImage, Pane canvas, int targetColorCount) {
         // 1. ANALYZE TASK (Drives the analysis progress bar)
@@ -295,7 +362,9 @@ public class MainController {
     private void syncUIWithCurrentSettings() {
         if (loadedFiles.isEmpty()) return;
         ImageSettings settings = getCurrentSettings();
-
+        if (presetComboBox != null && settings.getPreset() != null) {
+            presetComboBox.getSelectionModel().select(settings.getPreset());
+        }
         // 1. Sync color mode toggle group
         for (Toggle t : colorToggleGroup.getToggles()) {
             if (t instanceof ToggleButton btn) {
