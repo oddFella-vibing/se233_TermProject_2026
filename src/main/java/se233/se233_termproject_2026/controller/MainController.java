@@ -1,7 +1,10 @@
 package se233.se233_termproject_2026.controller;
 
 import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
 import javafx.geometry.Pos;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -74,6 +77,8 @@ public class MainController {
     @FXML private VBox vectorizeProgressBox;
     @FXML private ProgressBar vectorizeProgressBar;
 
+    // --- MODIFIED/ADDED FOR BACK TO DROP VIEW: FXML Injection ---
+    @FXML private Button backToDropButton;
     private ProgressTaskService progressTaskService;
 
     private List<File> loadedFiles = new ArrayList<>();
@@ -405,6 +410,30 @@ public class MainController {
             }
         }
         updateColorSwatches(_5ColorPalette);
+    }
+
+
+    // --- MODIFIED/ADDED FOR BACK TO DROP VIEW: Navigation Logic ---
+    @FXML
+    private void handleBackToDrop() {
+        try {
+
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/se233/se233_termproject_2026/drop-view.fxml"));
+            Parent root = loader.load();
+
+            // Get current stage from any UI element
+            Stage stage = (Stage) vectorImage.getScene().getWindow();
+
+            Scene scene = new Scene(root);
+            stage.setScene(scene);
+            stage.setTitle("Image Vectorizer - Drop Files");
+            stage.show();
+
+            logger.debug("Successfully returned to drop view.");
+        } catch (IOException e) {
+            logger.error("Failed to load drop view: {}", e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     @FXML

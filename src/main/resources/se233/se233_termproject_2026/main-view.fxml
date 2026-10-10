@@ -67,7 +67,10 @@
                     </graphic>
                 </Button>
             </items>
+            <Pane HBox.hgrow="ALWAYS" />
+            <Button fx:id="backToDropButton" text="← Back to Drop View" onAction="#handleBackToDrop" styleClass="secondary-button" />
         </ToolBar>
+
     </top>
 
     <!-- Center: Side-by-Side Image Comparison Workspace -->
